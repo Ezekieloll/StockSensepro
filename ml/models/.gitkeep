@@ -1,0 +1,5 @@
+# Placeholder to keep this directory in git
+# Model files (.pt, .pth) are excluded from git due to size
+# Your friend will need to either:
+# 1. Train the model using: python ml/forecasting/train_tft_gnn_v2.py
+# 2. Or download pre-trained model from releases

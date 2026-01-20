@@ -1,0 +1,20 @@
+# Core numerical stack
+numpy>=1.26,<2.1
+pandas>=2.1,<2.3
+
+# Machine learning
+scikit-learn>=1.4,<1.6
+
+# Deep learning (CPU for now)
+torch>=2.2,<2.4
+
+# Visualization (for evaluation & report plots)
+matplotlib>=3.8,<3.10
+seaborn>=0.13,<0.14
+
+# Utilities
+tqdm>=4.66,<5.0
+
+# Database access (for inference stage)
+sqlalchemy>=2.0,<2.1
+psycopg2-binary>=2.9,<3.0

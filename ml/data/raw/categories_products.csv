@@ -1,0 +1,241 @@
+Category_Code,SKU_ID,Product_Name
+GROC,SKU_GROC001,Rice (5kg Bag)
+GROC,SKU_GROC002,Cooking Oil (1L)
+GROC,SKU_GROC003,Wheat Flour (10kg)
+GROC,SKU_GROC004,Sugar (1kg)
+GROC,SKU_GROC005,Salt (1kg)
+GROC,SKU_GROC006,Lentils (1kg Pack)
+GROC,SKU_GROC007,Pasta (500g)
+GROC,SKU_GROC008,Breakfast Cereal (500g)
+GROC,SKU_GROC009,Tea (250g Pack)
+GROC,SKU_GROC010,Coffee (200g Jar)
+FRPR,SKU_FRPR001,Apples (1kg)
+FRPR,SKU_FRPR002,Bananas (1 Dozen)
+FRPR,SKU_FRPR003,Oranges (1kg)
+FRPR,SKU_FRPR004,Tomatoes (1kg)
+FRPR,SKU_FRPR005,Potatoes (5kg Bag)
+FRPR,SKU_FRPR006,Onions (2kg Bag)
+FRPR,SKU_FRPR007,Carrots (1kg)
+FRPR,SKU_FRPR008,Spinach (500g)
+FRPR,SKU_FRPR009,Grapes (500g)
+FRPR,SKU_FRPR010,Mangoes (2kg Box)
+BEVG,SKU_BEVG001,Mineral Water (1L)
+BEVG,SKU_BEVG002,Cola Drink (2L)
+BEVG,SKU_BEVG003,Orange Juice (1L)
+BEVG,SKU_BEVG004,Lemonade (1.5L)
+BEVG,SKU_BEVG005,Energy Drink (500ml)
+BEVG,SKU_BEVG006,Iced Tea (1L)
+BEVG,SKU_BEVG007,Beer (6 Pack)
+BEVG,SKU_BEVG008,Whiskey (750ml)
+BEVG,SKU_BEVG009,Wine (750ml)
+BEVG,SKU_BEVG010,Coconut Water (500ml)
+BKDY,SKU_BKDY001,White Bread (400g)
+BKDY,SKU_BKDY002,Brown Bread (400g)
+BKDY,SKU_BKDY003,Butter (200g)
+BKDY,SKU_BKDY004,Cheese Slices (200g)
+BKDY,SKU_BKDY005,Milk (1L)
+BKDY,SKU_BKDY006,Yogurt (500g)
+BKDY,SKU_BKDY007,Cream (200ml)
+BKDY,SKU_BKDY008,Croissant (Pack of 4)
+BKDY,SKU_BKDY009,Donuts (Pack of 6)
+BKDY,SKU_BKDY010,Cake (500g)
+FRZN,SKU_FRZN001,Frozen Peas (500g)
+FRZN,SKU_FRZN002,Frozen French Fries (1kg)
+FRZN,SKU_FRZN003,Frozen Chicken Nuggets (1kg)
+FRZN,SKU_FRZN004,Ice Cream (1L Tub)
+FRZN,SKU_FRZN005,Frozen Pizza (Medium)
+FRZN,SKU_FRZN006,Frozen Fish Fillet (500g)
+FRZN,SKU_FRZN007,Frozen Parathas (Pack of 10)
+FRZN,SKU_FRZN008,Frozen Mixed Veggies (1kg)
+FRZN,SKU_FRZN009,Frozen Burger Patties (500g)
+FRZN,SKU_FRZN010,Frozen Momos (Pack of 12)
+SNCK,SKU_SNCK001,Potato Chips (200g)
+SNCK,SKU_SNCK002,Chocolate Bar (100g)
+SNCK,SKU_SNCK003,Biscuits (Pack of 12)
+SNCK,SKU_SNCK004,Popcorn (Microwave Pack)
+SNCK,SKU_SNCK005,Candy (Pack of 50)
+SNCK,SKU_SNCK006,Wafers (200g)
+SNCK,SKU_SNCK007,Energy Bar (50g)
+SNCK,SKU_SNCK008,Lollipop (Pack of 10)
+SNCK,SKU_SNCK009,Jelly Pack (500g)
+SNCK,SKU_SNCK010,Cookies (Pack of 6)
+MEAT,SKU_MEAT001,Chicken Breast (1kg)
+MEAT,SKU_MEAT002,Chicken Wings (1kg)
+MEAT,SKU_MEAT003,Fresh Fish (1kg)
+MEAT,SKU_MEAT004,Prawns (500g)
+MEAT,SKU_MEAT005,Mutton (1kg)
+MEAT,SKU_MEAT006,Salmon Fillet (500g)
+MEAT,SKU_MEAT007,Crab (1kg)
+MEAT,SKU_MEAT008,Shrimp (1kg)
+MEAT,SKU_MEAT009,Beef Steak (500g)
+MEAT,SKU_MEAT010,Bacon (200g)
+PRSN,SKU_PRSN001,Shampoo (500ml)
+PRSN,SKU_PRSN002,Soap Bar (Pack of 3)
+PRSN,SKU_PRSN003,Toothpaste (200g)
+PRSN,SKU_PRSN004,Toothbrush (Pack of 2)
+PRSN,SKU_PRSN005,Face Wash (150ml)
+PRSN,SKU_PRSN006,Deodorant (150ml)
+PRSN,SKU_PRSN007,Hair Oil (200ml)
+PRSN,SKU_PRSN008,Body Lotion (200ml)
+PRSN,SKU_PRSN009,Hand Sanitizer (100ml)
+PRSN,SKU_PRSN010,Sunscreen (100ml)
+BABC,SKU_BABC001,Baby Diapers (Pack of 30)
+BABC,SKU_BABC002,Baby Wipes (Pack of 80)
+BABC,SKU_BABC003,Baby Soap (100g)
+BABC,SKU_BABC004,Baby Shampoo (200ml)
+BABC,SKU_BABC005,Baby Lotion (100ml)
+BABC,SKU_BABC006,"Baby Food (Jar, 200g)"
+BABC,SKU_BABC007,Infant Formula (500g)
+BABC,SKU_BABC008,Baby Powder (200g)
+BABC,SKU_BABC009,Feeding Bottle (250ml)
+BABC,SKU_BABC010,Pacifier
+CLOT,SKU_CLOT001,Men’s T-Shirt (Size M)
+CLOT,SKU_CLOT002,Women’s Jeans (Size 28)
+CLOT,SKU_CLOT003,Winter Jacket (Unisex)
+CLOT,SKU_CLOT004,Kids’ Hoodie
+CLOT,SKU_CLOT005,Formal Shirt (Men)
+CLOT,SKU_CLOT006,Saree (Women)
+CLOT,SKU_CLOT007,Sports Shorts
+CLOT,SKU_CLOT008,Summer Dress
+CLOT,SKU_CLOT009,Baby Romper
+CLOT,SKU_CLOT010,Raincoat
+FTRW,SKU_FTRW001,Men’s Sneakers
+FTRW,SKU_FTRW002,Women’s Sandals
+FTRW,SKU_FTRW003,Kids’ Shoes
+FTRW,SKU_FTRW004,Formal Shoes (Men)
+FTRW,SKU_FTRW005,Sports Shoes
+FTRW,SKU_FTRW006,Flip Flops
+FTRW,SKU_FTRW007,High Heels
+FTRW,SKU_FTRW008,Slippers
+FTRW,SKU_FTRW009,Boots
+FTRW,SKU_FTRW010,Crocs
+JWCH,SKU_JWCH001,Gold Necklace
+JWCH,SKU_JWCH002,Silver Ring
+JWCH,SKU_JWCH003,Diamond Earrings
+JWCH,SKU_JWCH004,Wristwatch (Men)
+JWCH,SKU_JWCH005,Wristwatch (Women)
+JWCH,SKU_JWCH006,Bracelet
+JWCH,SKU_JWCH007,Nose Pin
+JWCH,SKU_JWCH008,Smartwatch
+JWCH,SKU_JWCH009,Pendant Chain
+JWCH,SKU_JWCH010,Anklet
+BAGL,SKU_BAGL001,Backpack
+BAGL,SKU_BAGL002,Handbag
+BAGL,SKU_BAGL003,Suitcase (Medium)
+BAGL,SKU_BAGL004,Trolley Bag
+BAGL,SKU_BAGL005,Laptop Bag
+BAGL,SKU_BAGL006,Gym Bag
+BAGL,SKU_BAGL007,Travel Duffel
+BAGL,SKU_BAGL008,School Bag
+BAGL,SKU_BAGL009,Messenger Bag
+BAGL,SKU_BAGL010,Wallet
+ELEC,SKU_ELEC001,Smartphone (128GB)
+ELEC,SKU_ELEC002,LED TV (42 inch)
+ELEC,SKU_ELEC003,"Laptop (i5, 8GB RAM)"
+ELEC,SKU_ELEC004,Bluetooth Speaker
+ELEC,SKU_ELEC005,Headphones (Wireless)
+ELEC,SKU_ELEC006,Tablet (10 inch)
+ELEC,SKU_ELEC007,Smartwatch
+ELEC,SKU_ELEC008,DSLR Camera
+ELEC,SKU_ELEC009,Gaming Console
+ELEC,SKU_ELEC010,Power Bank (10000mAh)
+STOF,SKU_STOF001,Notebook (200 pages)
+STOF,SKU_STOF002,Pen (Pack of 10)
+STOF,SKU_STOF003,Pencil (Pack of 12)
+STOF,SKU_STOF004,Eraser (Pack of 5)
+STOF,SKU_STOF005,Marker (Pack of 4)
+STOF,SKU_STOF006,Stapler
+STOF,SKU_STOF007,File Folder
+STOF,SKU_STOF008,Printer Paper (500 Sheets)
+STOF,SKU_STOF009,Glue Stick
+STOF,SKU_STOF010,Scissors
+FURH,SKU_FURH001,Dining Table (4 Seater)
+FURH,SKU_FURH002,Office Chair
+FURH,SKU_FURH003,Sofa (3 Seater)
+FURH,SKU_FURH004,Coffee Table
+FURH,SKU_FURH005,Wardrobe
+FURH,SKU_FURH006,Bed (King Size)
+FURH,SKU_FURH007,Bookshelf
+FURH,SKU_FURH008,Dressing Table
+FURH,SKU_FURH009,TV Cabinet
+FURH,SKU_FURH010,Recliner
+BEDM,SKU_BEDM001,Mattress (Queen Size)
+BEDM,SKU_BEDM002,Bedsheet (Double)
+BEDM,SKU_BEDM003,Pillow (Pack of 2)
+BEDM,SKU_BEDM004,Blanket (Single)
+BEDM,SKU_BEDM005,Comforter (Double)
+BEDM,SKU_BEDM006,Duvet (Single)
+BEDM,SKU_BEDM007,Bedcover (King Size)
+BEDM,SKU_BEDM008,Mattress Protector
+BEDM,SKU_BEDM009,Cushion Covers (Pack of 4)
+BEDM,SKU_BEDM010,Mosquito Net
+CLNS,SKU_CLNS001,Floor Cleaner (1L)
+CLNS,SKU_CLNS002,Toilet Cleaner (500ml)
+CLNS,SKU_CLNS003,Dishwashing Liquid (500ml)
+CLNS,SKU_CLNS004,Glass Cleaner (500ml)
+CLNS,SKU_CLNS005,Detergent Powder (1kg)
+CLNS,SKU_CLNS006,Washing Soap (Pack of 4)
+CLNS,SKU_CLNS007,Scrub Pad (Pack of 2)
+CLNS,SKU_CLNS008,Mop Set
+CLNS,SKU_CLNS009,Garbage Bags (Roll of 30)
+CLNS,SKU_CLNS010,Air Freshener
+KICH,SKU_KICH001,Frying Pan
+KICH,SKU_KICH002,Pressure Cooker
+KICH,SKU_KICH003,Knife Set
+KICH,SKU_KICH004,Chopping Board
+KICH,SKU_KICH005,Mixer Grinder
+KICH,SKU_KICH006,Microwave Oven
+KICH,SKU_KICH007,Gas Stove (2 Burner)
+KICH,SKU_KICH008,Kettle (Electric)
+KICH,SKU_KICH009,Toaster
+KICH,SKU_KICH010,Blender
+PETC,SKU_PETC001,Dog Food (5kg)
+PETC,SKU_PETC002,Cat Food (2kg)
+PETC,SKU_PETC003,Bird Feed (1kg)
+PETC,SKU_PETC004,Fish Food (500g)
+PETC,SKU_PETC005,Pet Shampoo (200ml)
+PETC,SKU_PETC006,Pet Toy (Ball)
+PETC,SKU_PETC007,Dog Leash
+PETC,SKU_PETC008,Cat Litter (5kg)
+PETC,SKU_PETC009,Pet Bed
+PETC,SKU_PETC010,Pet Carrier
+SPRT,SKU_SPRT001,Football
+SPRT,SKU_SPRT002,Cricket Bat
+SPRT,SKU_SPRT003,Tennis Racket
+SPRT,SKU_SPRT004,Badminton Shuttle Pack
+SPRT,SKU_SPRT005,Basketball
+SPRT,SKU_SPRT006,Yoga Mat
+SPRT,SKU_SPRT007,"Dumbbells (Pair, 5kg)"
+SPRT,SKU_SPRT008,Bicycle (Adult)
+SPRT,SKU_SPRT009,Skipping Rope
+SPRT,SKU_SPRT010,Camping Tent
+TOYG,SKU_TOYG001,Teddy Bear
+TOYG,SKU_TOYG002,Remote Control Car
+TOYG,SKU_TOYG003,Doll Set
+TOYG,SKU_TOYG004,Puzzle (500 Pieces)
+TOYG,SKU_TOYG005,Board Game (Ludo)
+TOYG,SKU_TOYG006,Lego Set
+TOYG,SKU_TOYG007,Action Figure
+TOYG,SKU_TOYG008,Toy Train Set
+TOYG,SKU_TOYG009,Kite
+TOYG,SKU_TOYG010,Toy Drum Set
+AUTO,SKU_AUTO001,Car Battery
+AUTO,SKU_AUTO002,Engine Oil (1L)
+AUTO,SKU_AUTO003,Car Floor Mats
+AUTO,SKU_AUTO004,Bike Helmet
+AUTO,SKU_AUTO005,Car Cover
+AUTO,SKU_AUTO006,Tyre (Car)
+AUTO,SKU_AUTO007,Wrench Set
+AUTO,SKU_AUTO008,Screwdriver Kit
+AUTO,SKU_AUTO009,Drill Machine
+AUTO,SKU_AUTO010,Car Air Freshener
+BOOK,SKU_BOOK001,Novel (Fiction)
+BOOK,SKU_BOOK002,Magazine (Monthly)
+BOOK,SKU_BOOK003,Comic Book
+BOOK,SKU_BOOK004,Children’s Storybook
+BOOK,SKU_BOOK005,Educational Textbook
+BOOK,SKU_BOOK006,Coloring Book
+BOOK,SKU_BOOK007,Cook Book
+BOOK,SKU_BOOK008,Self-Help Book
+BOOK,SKU_BOOK009,Music CD
+BOOK,SKU_BOOK010,Movie DVD
