@@ -12,6 +12,7 @@ import {
     SearchIcon,
     RefreshIcon,
 } from '@/components/Icons';
+import InsightAssistant from '@/components/InsightAssistant';
 
 interface User {
     id?: number;
@@ -620,6 +621,9 @@ export default function ForecastsPage() {
                         </div>
                     </CardContent>
                 </Card>
+
+                {/* LLM Assistant */}
+                <InsightAssistant productDetail={productDetail} />
             </div>
         </div>
     );

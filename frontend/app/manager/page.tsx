@@ -21,6 +21,7 @@ import {
     DatabaseIcon,
     RefreshIcon,
 } from '@/components/Icons';
+import InsightAssistant from '@/components/InsightAssistant';
 
 interface User {
     id?: number;
@@ -216,7 +217,7 @@ export default function ManagerDashboard() {
                             <select
                                 value={selectedStore}
                                 onChange={(e) => handleStoreChange(e.target.value)}
-                                className="bg-surface-elevated border border-white/10 rounded-lg py-1.5 px-3 text-xs focus:ring-1 focus:ring-secondary outline-none"
+                                className="bg-slate-900 text-white border border-white/20 rounded-lg py-1.5 px-3 text-xs focus:ring-1 focus:ring-secondary outline-none"
                             >
                                 <option value="">All Stores</option>
                                 <option value="S1">Store S1</option>
@@ -235,7 +236,7 @@ export default function ManagerDashboard() {
                                 <input
                                     type="text"
                                     placeholder="Search SKU..."
-                                    className="bg-surface-elevated border border-white/10 rounded-full py-1.5 pl-9 pr-4 text-xs focus:ring-1 focus:ring-secondary outline-none transition-all w-40 focus:w-56"
+                                    className="bg-slate-900 text-white border border-white/20 rounded-full py-1.5 pl-9 pr-4 text-xs focus:ring-1 focus:ring-secondary outline-none transition-all w-40 focus:w-56"
                                 />
                             </div>
                             <button className="p-2 hover:bg-white/5 rounded-lg transition-colors relative">
@@ -550,17 +551,12 @@ export default function ManagerDashboard() {
                     </Card>
                 </div>
 
-                {/* LLM Assistant Floating Button */}
-                <div className="fixed bottom-6 right-6">
-                    <button className="w-14 h-14 bg-gradient-to-r from-purple-600 to-pink-600 rounded-full shadow-lg shadow-purple-500/30 flex items-center justify-center hover:scale-110 transition-transform">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                        </svg>
-                    </button>
-                    <span className="absolute -top-8 right-0 bg-surface-elevated text-xs px-2 py-1 rounded shadow-lg opacity-0 hover:opacity-100 transition-opacity whitespace-nowrap">
-                        Ask LLM Assistant
-                    </span>
-                </div>
+                {/* LLM Assistant */}
+                <InsightAssistant
+                    forecasts={forecasts}
+                    alerts={alerts}
+                    summary={summary}
+                />
             </div>
         </div>
     );

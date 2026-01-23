@@ -19,7 +19,9 @@ import {
     CheckIcon,
     DatabaseIcon,
     RefreshIcon,
+    CalendarIcon,
 } from '@/components/Icons';
+import AnalysisView from './AnalysisView';
 
 interface User {
     id?: number;
@@ -140,13 +142,13 @@ export default function AnalystDashboard() {
                                 <span className="text-xl font-bold gradient-text">StockSensePro</span>
                             </div>
                             <div className="hidden md:flex items-center gap-1">
-                                {['overview', 'forecasts', 'gnn', 'simulation', 'anomalies', 'reports'].map((tab) => (
+                                {['overview', 'analysis', 'forecasts', 'gnn'].map((tab) => (
                                     <button
                                         key={tab}
                                         onClick={() => setActiveTab(tab)}
                                         className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === tab
-                                                ? 'bg-info/20 text-info'
-                                                : 'text-muted hover:text-foreground hover:bg-white/5'
+                                            ? 'bg-info/20 text-info'
+                                            : 'text-muted hover:text-foreground hover:bg-white/5'
                                             }`}
                                     >
                                         {tab === 'gnn' ? 'GNN Insights' : tab.charAt(0).toUpperCase() + tab.slice(1)}
@@ -210,276 +212,288 @@ export default function AnalystDashboard() {
                     </div>
                 </div>
 
-                {/* Model Performance Cards */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-                    <Card glass className="group hover:border-info/30 transition-all">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className="text-xs text-muted uppercase tracking-wider">Active Model</p>
-                                <h3 className="text-xl font-bold mt-1 text-info">TFT v2.1</h3>
-                                <p className="text-xs text-muted mt-1">Temporal Fusion</p>
-                            </div>
-                            <div className="w-10 h-10 bg-info/10 rounded-lg flex items-center justify-center text-info">
-                                <ActivityIcon size={20} />
-                            </div>
-                        </div>
-                    </Card>
+                {/* Analysis View Content */}
+                {activeTab === 'analysis' && (
+                    <div className="animate-in fade-in duration-300">
+                        <AnalysisView />
+                    </div>
+                )}
 
-                    <Card glass className="group hover:border-success/30 transition-all">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className="text-xs text-muted uppercase tracking-wider">Avg. MAPE</p>
-                                <h3 className="text-2xl font-bold mt-1 text-success">8.5%</h3>
-                                <div className="flex items-center gap-1 mt-1">
-                                    <TrendingDownIcon size={12} className="text-success" />
-                                    <span className="text-xs text-success">-1.2%</span>
-                                </div>
-                            </div>
-                            <div className="w-10 h-10 bg-success/10 rounded-lg flex items-center justify-center text-success">
-                                <CheckIcon size={20} />
-                            </div>
-                        </div>
-                    </Card>
-
-                    <Card glass className="group hover:border-warning/30 transition-all">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className="text-xs text-muted uppercase tracking-wider">Anomalies</p>
-                                <h3 className="text-2xl font-bold mt-1 text-warning">3</h3>
-                                <p className="text-xs text-muted mt-1">1 new today</p>
-                            </div>
-                            <div className="w-10 h-10 bg-warning/10 rounded-lg flex items-center justify-center text-warning">
-                                <AlertIcon size={20} />
-                            </div>
-                        </div>
-                    </Card>
-
-                    <Card glass className="group hover:border-primary/30 transition-all">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className="text-xs text-muted uppercase tracking-wider">GNN Nodes</p>
-                                <h3 className="text-2xl font-bold mt-1">248</h3>
-                                <p className="text-xs text-muted mt-1">1,234 edges</p>
-                            </div>
-                            <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center text-primary">
-                                <DatabaseIcon size={20} />
-                            </div>
-                        </div>
-                    </Card>
-                </div>
-
-                {/* Main Content Grid */}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
-                    {/* Model Comparison */}
-                    <Card glass className="lg:col-span-2">
-                        <CardHeader>
-                            <div className="flex items-center justify-between">
-                                <div>
-                                    <CardTitle className="flex items-center gap-2 text-lg">
-                                        <ActivityIcon size={18} className="text-info" />
-                                        Model Performance Comparison
-                                    </CardTitle>
-                                    <CardDescription>Compare accuracy metrics across models</CardDescription>
-                                </div>
-                            </div>
-                        </CardHeader>
-                        <CardContent>
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead>Model</TableHead>
-                                        <TableHead className="text-right">MAE</TableHead>
-                                        <TableHead className="text-right">MAPE</TableHead>
-                                        <TableHead className="text-right">WAPE</TableHead>
-                                        <TableHead className="text-right">Status</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {mockModelMetrics.map((model) => (
-                                        <TableRow
-                                            key={model.model}
-                                            className={`hover:bg-white/5 cursor-pointer ${selectedModel === model.model ? 'bg-info/10' : ''}`}
-                                            onClick={() => setSelectedModel(model.model)}
-                                        >
-                                            <TableCell>
-                                                <div className="font-medium text-sm">{model.model}</div>
-                                            </TableCell>
-                                            <TableCell className="text-right font-mono">{model.mae}</TableCell>
-                                            <TableCell className="text-right font-mono">{model.mape}</TableCell>
-                                            <TableCell className="text-right font-mono">{model.wape}</TableCell>
-                                            <TableCell className="text-right">
-                                                {getStatusBadge(model.status)}
-                                            </TableCell>
-                                        </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
-                        </CardContent>
-                    </Card>
-
-                    {/* Anomalies Panel */}
-                    <Card glass>
-                        <CardHeader>
-                            <div className="flex items-center justify-between">
-                                <CardTitle className="flex items-center gap-2 text-lg">
-                                    <AlertIcon size={18} className="text-warning" />
-                                    Detected Anomalies
-                                </CardTitle>
-                            </div>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="space-y-3">
-                                {mockAnomalies.map((anomaly) => (
-                                    <div
-                                        key={anomaly.id}
-                                        className="p-3 bg-white/5 rounded-lg border border-white/5 hover:border-warning/30 transition-all cursor-pointer"
-                                    >
-                                        <div className="flex items-start justify-between mb-2">
-                                            <span className="font-mono text-xs text-muted">{anomaly.sku}</span>
-                                            {getStatusBadge(anomaly.status)}
-                                        </div>
-                                        <p className="text-sm font-medium text-warning">{anomaly.type}</p>
-                                        <p className="text-xs text-muted mt-1">{anomaly.description}</p>
-                                        <p className="text-xs text-muted mt-2">{anomaly.date}</p>
+                {/* Main Dashboard Content (Only show if NOT analysis tab) */}
+                {activeTab !== 'analysis' && (
+                    <>
+                        {/* Model Performance Cards */}...
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                            <Card glass className="group hover:border-info/30 transition-all">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className="text-xs text-muted uppercase tracking-wider">Active Model</p>
+                                        <h3 className="text-xl font-bold mt-1 text-info">TFT v2.1</h3>
+                                        <p className="text-xs text-muted mt-1">Temporal Fusion</p>
                                     </div>
-                                ))}
-                            </div>
-                            <Button variant="ghost" className="w-full mt-4 text-xs">
-                                Flag New Anomaly
-                            </Button>
-                        </CardContent>
-                    </Card>
-                </div>
-
-                {/* Second Row */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-                    {/* Forecast Accuracy */}
-                    <Card glass>
-                        <CardHeader>
-                            <div className="flex items-center justify-between">
-                                <div>
-                                    <CardTitle className="flex items-center gap-2 text-lg">
-                                        <ChartIcon size={18} className="text-success" />
-                                        Forecast Accuracy Review
-                                    </CardTitle>
-                                    <CardDescription>Compare predictions vs actuals</CardDescription>
+                                    <div className="w-10 h-10 bg-info/10 rounded-lg flex items-center justify-center text-info">
+                                        <ActivityIcon size={20} />
+                                    </div>
                                 </div>
-                                <Button variant="ghost" size="sm">View All</Button>
-                            </div>
-                        </CardHeader>
-                        <CardContent>
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead>Product</TableHead>
-                                        <TableHead className="text-right">Predicted</TableHead>
-                                        <TableHead className="text-right">Actual</TableHead>
-                                        <TableHead className="text-right">Error %</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {mockForecastAccuracy.map((item) => (
-                                        <TableRow key={item.sku} className="hover:bg-white/5">
-                                            <TableCell>
-                                                <div>
-                                                    <div className="font-medium text-sm">{item.name}</div>
-                                                    <div className="text-xs text-muted font-mono">{item.sku}</div>
-                                                </div>
-                                            </TableCell>
-                                            <TableCell className="text-right font-mono">{item.predicted}</TableCell>
-                                            <TableCell className="text-right font-mono">{item.actual}</TableCell>
-                                            <TableCell className="text-right">
-                                                <span className={`flex items-center justify-end gap-1 ${item.error > 5 ? 'text-warning' : 'text-success'}`}>
-                                                    {item.trend === 'up' ? <TrendingUpIcon size={12} /> : <TrendingDownIcon size={12} />}
-                                                    {item.error}%
-                                                </span>
-                                            </TableCell>
-                                        </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
-                        </CardContent>
-                    </Card>
+                            </Card>
 
-                    {/* What-If Simulation */}
-                    <Card glass>
-                        <CardHeader>
-                            <div className="flex items-center justify-between">
-                                <div>
-                                    <CardTitle className="flex items-center gap-2 text-lg">
-                                        <RefreshIcon size={18} className="text-primary" />
-                                        What-If Simulation
-                                    </CardTitle>
-                                    <CardDescription>Test different demand scenarios</CardDescription>
+                            <Card glass className="group hover:border-success/30 transition-all">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className="text-xs text-muted uppercase tracking-wider">Avg. MAPE</p>
+                                        <h3 className="text-2xl font-bold mt-1 text-success">8.5%</h3>
+                                        <div className="flex items-center gap-1 mt-1">
+                                            <TrendingDownIcon size={12} className="text-success" />
+                                            <span className="text-xs text-success">-1.2%</span>
+                                        </div>
+                                    </div>
+                                    <div className="w-10 h-10 bg-success/10 rounded-lg flex items-center justify-center text-success">
+                                        <CheckIcon size={20} />
+                                    </div>
                                 </div>
-                                <Button variant="primary" size="sm">Run Simulation</Button>
-                            </div>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="space-y-3">
-                                {mockSimulationResults.map((sim, idx) => (
-                                    <div key={idx} className="flex items-center justify-between p-4 bg-white/5 rounded-lg border border-white/5">
+                            </Card>
+
+                            <Card glass className="group hover:border-warning/30 transition-all">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className="text-xs text-muted uppercase tracking-wider">Anomalies</p>
+                                        <h3 className="text-2xl font-bold mt-1 text-warning">3</h3>
+                                        <p className="text-xs text-muted mt-1">1 new today</p>
+                                    </div>
+                                    <div className="w-10 h-10 bg-warning/10 rounded-lg flex items-center justify-center text-warning">
+                                        <AlertIcon size={20} />
+                                    </div>
+                                </div>
+                            </Card>
+
+                            <Card glass className="group hover:border-primary/30 transition-all">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className="text-xs text-muted uppercase tracking-wider">GNN Nodes</p>
+                                        <h3 className="text-2xl font-bold mt-1">248</h3>
+                                        <p className="text-xs text-muted mt-1">1,234 edges</p>
+                                    </div>
+                                    <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center text-primary">
+                                        <DatabaseIcon size={20} />
+                                    </div>
+                                </div>
+                            </Card>
+                        </div>
+
+                        {/* Main Content Grid */}
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+                            {/* Model Comparison */}
+                            <Card glass className="lg:col-span-2">
+                                <CardHeader>
+                                    <div className="flex items-center justify-between">
                                         <div>
-                                            <div className="font-medium text-sm">{sim.scenario}</div>
-                                            <div className="text-xs text-muted mt-1">Confidence: {sim.confidence}%</div>
-                                        </div>
-                                        <div className="text-right">
-                                            <div className="font-bold text-lg">{sim.demand.toLocaleString()}</div>
-                                            <div className="mt-1">{getRiskBadge(sim.risk)}</div>
+                                            <CardTitle className="flex items-center gap-2 text-lg">
+                                                <ActivityIcon size={18} className="text-info" />
+                                                Model Performance Comparison
+                                            </CardTitle>
+                                            <CardDescription>Compare accuracy metrics across models</CardDescription>
                                         </div>
                                     </div>
-                                ))}
-                            </div>
-                        </CardContent>
-                    </Card>
-                </div>
+                                </CardHeader>
+                                <CardContent>
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow>
+                                                <TableHead>Model</TableHead>
+                                                <TableHead className="text-right">MAE</TableHead>
+                                                <TableHead className="text-right">MAPE</TableHead>
+                                                <TableHead className="text-right">WAPE</TableHead>
+                                                <TableHead className="text-right">Status</TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {mockModelMetrics.map((model) => (
+                                                <TableRow
+                                                    key={model.model}
+                                                    className={`hover:bg-white/5 cursor-pointer ${selectedModel === model.model ? 'bg-info/10' : ''}`}
+                                                    onClick={() => setSelectedModel(model.model)}
+                                                >
+                                                    <TableCell>
+                                                        <div className="font-medium text-sm">{model.model}</div>
+                                                    </TableCell>
+                                                    <TableCell className="text-right font-mono">{model.mae}</TableCell>
+                                                    <TableCell className="text-right font-mono">{model.mape}</TableCell>
+                                                    <TableCell className="text-right font-mono">{model.wape}</TableCell>
+                                                    <TableCell className="text-right">
+                                                        {getStatusBadge(model.status)}
+                                                    </TableCell>
+                                                </TableRow>
+                                            ))}
+                                        </TableBody>
+                                    </Table>
+                                </CardContent>
+                            </Card>
 
-                {/* GNN Insights */}
-                <Card glass>
-                    <CardHeader>
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <CardTitle className="flex items-center gap-2 text-lg">
-                                    <DatabaseIcon size={18} className="text-primary" />
-                                    GNN Product Influence Graph
-                                </CardTitle>
-                                <CardDescription>Understand product relationships and cross-influences</CardDescription>
-                            </div>
-                            <Button variant="ghost" size="sm">View Full Graph</Button>
-                        </div>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            {mockGNNInsights.map((insight, idx) => (
-                                <div key={idx} className="p-4 bg-white/5 rounded-lg border border-white/5 hover:border-primary/30 transition-all">
-                                    <div className="flex items-center justify-between mb-3">
-                                        <span className="font-mono font-bold text-primary">{insight.sku}</span>
-                                        <Badge variant="default">{insight.category}</Badge>
+                            {/* Anomalies Panel */}
+                            <Card glass>
+                                <CardHeader>
+                                    <div className="flex items-center justify-between">
+                                        <CardTitle className="flex items-center gap-2 text-lg">
+                                            <AlertIcon size={18} className="text-warning" />
+                                            Detected Anomalies
+                                        </CardTitle>
                                     </div>
-                                    <p className="text-xs text-muted mb-2">Influenced by:</p>
-                                    <div className="flex flex-wrap gap-2 mb-3">
-                                        {insight.influencedBy.map((sku) => (
-                                            <span key={sku} className="px-2 py-1 bg-surface-elevated rounded text-xs font-mono">
-                                                {sku}
-                                            </span>
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="space-y-3">
+                                        {mockAnomalies.map((anomaly) => (
+                                            <div
+                                                key={anomaly.id}
+                                                className="p-3 bg-white/5 rounded-lg border border-white/5 hover:border-warning/30 transition-all cursor-pointer"
+                                            >
+                                                <div className="flex items-start justify-between mb-2">
+                                                    <span className="font-mono text-xs text-muted">{anomaly.sku}</span>
+                                                    {getStatusBadge(anomaly.status)}
+                                                </div>
+                                                <p className="text-sm font-medium text-warning">{anomaly.type}</p>
+                                                <p className="text-xs text-muted mt-1">{anomaly.description}</p>
+                                                <p className="text-xs text-muted mt-2">{anomaly.date}</p>
+                                            </div>
                                         ))}
                                     </div>
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-xs text-muted">Influence Strength</span>
-                                        <span className="text-sm font-bold text-info">{(insight.influenceStrength * 100).toFixed(0)}%</span>
-                                    </div>
-                                    {/* Influence bar */}
-                                    <div className="mt-2 h-2 bg-surface-elevated rounded-full overflow-hidden">
-                                        <div
-                                            className="h-full bg-gradient-to-r from-info to-primary rounded-full transition-all"
-                                            style={{ width: `${insight.influenceStrength * 100}%` }}
-                                        ></div>
-                                    </div>
-                                </div>
-                            ))}
+                                    <Button variant="ghost" className="w-full mt-4 text-xs">
+                                        Flag New Anomaly
+                                    </Button>
+                                </CardContent>
+                            </Card>
                         </div>
-                    </CardContent>
-                </Card>
+
+                        {/* Second Row */}
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+                            {/* Forecast Accuracy */}
+                            <Card glass>
+                                <CardHeader>
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <CardTitle className="flex items-center gap-2 text-lg">
+                                                <ChartIcon size={18} className="text-success" />
+                                                Forecast Accuracy Review
+                                            </CardTitle>
+                                            <CardDescription>Compare predictions vs actuals</CardDescription>
+                                        </div>
+                                        <Button variant="ghost" size="sm">View All</Button>
+                                    </div>
+                                </CardHeader>
+                                <CardContent>
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow>
+                                                <TableHead>Product</TableHead>
+                                                <TableHead className="text-right">Predicted</TableHead>
+                                                <TableHead className="text-right">Actual</TableHead>
+                                                <TableHead className="text-right">Error %</TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {mockForecastAccuracy.map((item) => (
+                                                <TableRow key={item.sku} className="hover:bg-white/5">
+                                                    <TableCell>
+                                                        <div>
+                                                            <div className="font-medium text-sm">{item.name}</div>
+                                                            <div className="text-xs text-muted font-mono">{item.sku}</div>
+                                                        </div>
+                                                    </TableCell>
+                                                    <TableCell className="text-right font-mono">{item.predicted}</TableCell>
+                                                    <TableCell className="text-right font-mono">{item.actual}</TableCell>
+                                                    <TableCell className="text-right">
+                                                        <span className={`flex items-center justify-end gap-1 ${item.error > 5 ? 'text-warning' : 'text-success'}`}>
+                                                            {item.trend === 'up' ? <TrendingUpIcon size={12} /> : <TrendingDownIcon size={12} />}
+                                                            {item.error}%
+                                                        </span>
+                                                    </TableCell>
+                                                </TableRow>
+                                            ))}
+                                        </TableBody>
+                                    </Table>
+                                </CardContent>
+                            </Card>
+
+                            {/* What-If Simulation */}
+                            <Card glass>
+                                <CardHeader>
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <CardTitle className="flex items-center gap-2 text-lg">
+                                                <RefreshIcon size={18} className="text-primary" />
+                                                What-If Simulation
+                                            </CardTitle>
+                                            <CardDescription>Test different demand scenarios</CardDescription>
+                                        </div>
+                                        <Button variant="primary" size="sm">Run Simulation</Button>
+                                    </div>
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="space-y-3">
+                                        {mockSimulationResults.map((sim, idx) => (
+                                            <div key={idx} className="flex items-center justify-between p-4 bg-white/5 rounded-lg border border-white/5">
+                                                <div>
+                                                    <div className="font-medium text-sm">{sim.scenario}</div>
+                                                    <div className="text-xs text-muted mt-1">Confidence: {sim.confidence}%</div>
+                                                </div>
+                                                <div className="text-right">
+                                                    <div className="font-bold text-lg">{sim.demand.toLocaleString()}</div>
+                                                    <div className="mt-1">{getRiskBadge(sim.risk)}</div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        </div>
+
+                        {/* GNN Insights */}
+                        <Card glass>
+                            <CardHeader>
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <CardTitle className="flex items-center gap-2 text-lg">
+                                            <DatabaseIcon size={18} className="text-primary" />
+                                            GNN Product Influence Graph
+                                        </CardTitle>
+                                        <CardDescription>Understand product relationships and cross-influences</CardDescription>
+                                    </div>
+                                    <Button variant="ghost" size="sm">View Full Graph</Button>
+                                </div>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    {mockGNNInsights.map((insight, idx) => (
+                                        <div key={idx} className="p-4 bg-white/5 rounded-lg border border-white/5 hover:border-primary/30 transition-all">
+                                            <div className="flex items-center justify-between mb-3">
+                                                <span className="font-mono font-bold text-primary">{insight.sku}</span>
+                                                <Badge variant="default">{insight.category}</Badge>
+                                            </div>
+                                            <p className="text-xs text-muted mb-2">Influenced by:</p>
+                                            <div className="flex flex-wrap gap-2 mb-3">
+                                                {insight.influencedBy.map((sku) => (
+                                                    <span key={sku} className="px-2 py-1 bg-surface-elevated rounded text-xs font-mono">
+                                                        {sku}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-xs text-muted">Influence Strength</span>
+                                                <span className="text-sm font-bold text-info">{(insight.influenceStrength * 100).toFixed(0)}%</span>
+                                            </div>
+                                            {/* Influence bar */}
+                                            <div className="mt-2 h-2 bg-surface-elevated rounded-full overflow-hidden">
+                                                <div
+                                                    className="h-full bg-gradient-to-r from-info to-primary rounded-full transition-all"
+                                                    style={{ width: `${insight.influenceStrength * 100}%` }}
+                                                ></div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </CardContent>
+                        </Card>
+                    </>
+                )}
 
                 {/* LLM Assistant Floating Button */}
                 <div className="fixed bottom-6 right-6">
@@ -493,6 +507,6 @@ export default function AnalystDashboard() {
                     </div>
                 </div>
             </div>
-        </div>
+        </div >
     );
 }
