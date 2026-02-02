@@ -14,5 +14,6 @@ class User(Base):
     password_hash = Column(String, nullable=False)
 
     role = Column(String, nullable=False)  # admin | manager | analyst
+    store_id = Column(String, nullable=True)  # S1, S2, S3 (only for managers)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())

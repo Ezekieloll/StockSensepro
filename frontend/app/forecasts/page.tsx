@@ -2,17 +2,17 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Card, { CardHeader, CardTitle, CardDescription, CardContent } from '@/components/Card';
-import Button from '@/components/Button';
-import Badge from '@/components/Badge';
+import Card, { CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/Card';
+import Button from '@/components/ui/Button';
+import Badge from '@/components/ui/Badge';
 import {
     TrendingUpIcon,
     ChartIcon,
     LogoutIcon,
     SearchIcon,
     RefreshIcon,
-} from '@/components/Icons';
-import InsightAssistant from '@/components/InsightAssistant';
+} from '@/components/ui/Icons';
+import InsightAssistant from '@/components/features/InsightAssistant';
 
 interface User {
     id?: number;

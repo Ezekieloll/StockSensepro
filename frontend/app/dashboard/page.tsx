@@ -2,10 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Card, { CardHeader, CardTitle, CardDescription, CardContent } from '@/components/Card';
-import Button from '@/components/Button';
-import Badge from '@/components/Badge';
-import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/Table';
+import Card, { CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/Card';
+import Button from '@/components/ui/Button';
+import Badge from '@/components/ui/Badge';
+import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/Table';
 import {
     TrendingUpIcon,
     TrendingDownIcon,
@@ -19,7 +19,7 @@ import {
     SearchIcon,
     ShieldIcon,
     BriefcaseIcon
-} from '@/components/Icons';
+} from '@/components/ui/Icons';
 
 interface User {
     name?: string;

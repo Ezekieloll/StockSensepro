@@ -88,6 +88,10 @@ coverage.xml
 *.onnx
 !ml/models/.gitkeep
 
+# Processed data (can be regenerated)
+ml/data/processed*/
+ml/analysis/results/
+
 # Jupyter
 .ipynb_checkpoints/
 *.ipynb
@@ -98,6 +102,18 @@ coverage.xml
 *.log
 logs/
 tmp/
+
+# ==================
+# Database
+# ==================
+*.db
+*.sqlite
+*.sqlite3
+
+# ==================
+# Test/Sample Files
+# ==================
+test_upload.csv
 temp/
 
 # ==================

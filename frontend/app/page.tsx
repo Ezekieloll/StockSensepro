@@ -2,8 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import Button from '@/components/Button';
-import { TrendingUpIcon, ChartIcon, ShieldIcon, ArrowRightIcon } from '@/components/Icons';
+import Button from '@/components/ui/Button';
+import { TrendingUpIcon, ChartIcon, ShieldIcon, ArrowRightIcon } from '@/components/ui/Icons';
 
 export default function Home() {
   const canvasRef = useRef<HTMLCanvasElement>(null);

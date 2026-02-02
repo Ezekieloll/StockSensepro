@@ -18,3 +18,6 @@ tqdm>=4.66,<5.0
 # Database access (for inference stage)
 sqlalchemy>=2.0,<2.1
 psycopg2-binary>=2.9,<3.0
+
+# LLM integration (local models via Ollama)
+requests>=2.31,<3.0

@@ -3,9 +3,9 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import Button from '@/components/Button';
-import Input from '@/components/Input';
-import { MailIcon, LockIcon, TrendingUpIcon } from '@/components/Icons';
+import Button from '@/components/ui/Button';
+import Input from '@/components/ui/Input';
+import { MailIcon, LockIcon, TrendingUpIcon } from '@/components/ui/Icons';
 import api from '@/lib/api';
 
 export default function LoginPage() {

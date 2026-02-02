@@ -2,26 +2,27 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Card, { CardHeader, CardTitle, CardDescription, CardContent } from '@/components/Card';
-import Button from '@/components/Button';
-import Badge from '@/components/Badge';
-import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/Table';
+import Card from '@/components/ui/Card';
+import Button from '@/components/ui/Button';
+import Badge from '@/components/ui/Badge';
 import {
     TrendingUpIcon,
     TrendingDownIcon,
     ChartIcon,
-    UserIcon,
     LogoutIcon,
     BellIcon,
     BriefcaseIcon,
     SearchIcon,
     AlertIcon,
-    CheckIcon,
-    ClockIcon,
     DatabaseIcon,
     RefreshIcon,
-} from '@/components/Icons';
-import InsightAssistant from '@/components/InsightAssistant';
+} from '@/components/ui/Icons';
+import InsightAssistant from '@/components/features/InsightAssistant';
+import AlertsPanel from './components/AlertsPanel';
+import ForecastsTable from './components/ForecastsTable';
+import PurchaseOrders from './components/PurchaseOrders';
+import InventoryByStore from './components/InventoryByStore';
+import PurchaseOrderModal from './components/PurchaseOrderModal';
 
 interface User {
     id?: number;
@@ -60,18 +61,25 @@ interface ForecastSummary {
     avg_confidence: number;
 }
 
-// Fallback mock data
-const mockPurchaseOrders = [
-    { id: 'PO-2024-001', supplier: 'Dairy Fresh Co.', items: 5, total: 12500, status: 'pending', createdAt: '2 hours ago' },
-    { id: 'PO-2024-002', supplier: 'Farm Produce Ltd.', items: 8, total: 8750, status: 'approved', createdAt: '1 day ago' },
-    { id: 'PO-2024-003', supplier: 'Bakery Supplies', items: 3, total: 3200, status: 'delivered', createdAt: '3 days ago' },
-];
+interface PurchaseOrder {
+    id: number;
+    po_number: string;
+    store_id: string;
+    total_items: number;
+    total_quantity: number;
+    total_amount: number | null;
+    status: string;
+    created_at: string;
+    expected_delivery_date: string | null;
+}
 
-const mockInventorySummary = [
-    { store: 'S1', totalSKUs: 86, lowStock: 12, criticalStock: 3, value: 245000 },
-    { store: 'S2', totalSKUs: 82, lowStock: 8, criticalStock: 5, value: 198000 },
-    { store: 'S3', totalSKUs: 80, lowStock: 15, criticalStock: 2, value: 178000 },
-];
+interface PurchaseOrderItemCreate {
+    sku: string;
+    product_category?: string;
+    quantity_requested: number;
+    unit_price?: number | null;
+    notes?: string;
+}
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -87,6 +95,17 @@ export default function ManagerDashboard() {
     const [summary, setSummary] = useState<ForecastSummary | null>(null);
     const [forecastLoading, setForecastLoading] = useState(false);
     const [selectedStore, setSelectedStore] = useState<string>('');
+
+    // Purchase order state
+    const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
+    const [showPOModal, setShowPOModal] = useState(false);
+    const [poItems, setPOItems] = useState<PurchaseOrderItemCreate[]>([]);
+    const [poNotes, setPONotes] = useState('');
+
+    // Inventory data state
+    const [inventoryByStore, setInventoryByStore] = useState<any[]>([]);
+    const [totalInventoryValue, setTotalInventoryValue] = useState<number>(0);
+    const [userStore, setUserStore] = useState<string | null>(null);
 
     useEffect(() => {
         const userData = localStorage.getItem('user');
@@ -104,16 +123,32 @@ export default function ManagerDashboard() {
             return;
         }
         setUser(parsed);
+        const assignedStore = parsed.store_id || null;
+        setUserStore(assignedStore);
+        
+        // Set selectedStore to user's assigned store if they have one
+        if (assignedStore) {
+            setSelectedStore(assignedStore);
+        }
         setLoading(false);
 
-        // Fetch forecast data
-        fetchForecastData();
+        // Fetch forecast data with user's store filter
+        fetchForecastData(assignedStore);
     }, [router]);
 
-    const fetchForecastData = async (storeId?: string) => {
+    const fetchForecastData = async (forcedStoreId?: string) => {
         setForecastLoading(true);
         try {
-            const storeParam = storeId ? `?store_id=${storeId}` : '';
+            // CRITICAL: Get user's assigned store FIRST
+            const userData = localStorage.getItem('user');
+            const parsedUser = userData ? JSON.parse(userData) : null;
+            const userAssignedStore = parsedUser?.store_id;
+            
+            // If user has assigned store, ONLY use that - ignore all other parameters
+            const effectiveStore = userAssignedStore || forcedStoreId || selectedStore;
+            const storeParam = effectiveStore ? `?store_id=${effectiveStore}` : '';
+            
+            console.log('🔒 Fetching data for store:', effectiveStore, 'User assigned:', userAssignedStore);
 
             // Fetch forecasts by product
             const forecastRes = await fetch(`${API_URL}/forecast/by-product${storeParam}`);
@@ -135,6 +170,53 @@ export default function ManagerDashboard() {
                 const summaryData = await summaryRes.json();
                 setSummary(summaryData);
             }
+
+            // Fetch purchase orders
+            if (userData) {
+                const userStore = parsedUser.store_id;
+                const poStoreId = userStore || forcedStoreId;
+                if (poStoreId) {
+                    const poRes = await fetch(`${API_URL}/api/purchase-orders/?store_id=${poStoreId}`);
+                    if (poRes.ok) {
+                        const poData = await poRes.json();
+                        setPurchaseOrders(poData);
+                    }
+                }
+            }
+
+            // Fetch inventory values - only user's store if assigned, otherwise all or selected
+            const stores = userAssignedStore ? [userAssignedStore] : (forcedStoreId ? [forcedStoreId] : ['S1', 'S2', 'S3']);
+            const inventoryPromises = stores.map(async (store) => {
+                const invRes = await fetch(`${API_URL}/forecast/inventory-value?store_id=${store}`);
+                if (invRes.ok) {
+                    const invData = await invRes.json();
+                    
+                    // Get store-specific forecast summary for stock status
+                    const storeAlerts = await fetch(`${API_URL}/forecast/alerts?store_id=${store}`);
+                    let lowCount = 0, criticalCount = 0;
+                    if (storeAlerts.ok) {
+                        const alertsData = await storeAlerts.json();
+                        lowCount = alertsData.filter((a: any) => a.severity === 'medium').length;
+                        criticalCount = alertsData.filter((a: any) => a.severity === 'high').length;
+                    }
+
+                    return {
+                        store,
+                        totalSKUs: invData.total_skus,
+                        lowStock: lowCount,
+                        criticalStock: criticalCount,
+                        value: invData.estimated_value
+                    };
+                }
+                return null;
+            });
+
+            const inventoryData = (await Promise.all(inventoryPromises)).filter(Boolean);
+            setInventoryByStore(inventoryData);
+            
+            // Calculate total inventory value across all stores
+            const totalValue = inventoryData.reduce((sum, store) => sum + (store?.value || 0), 0);
+            setTotalInventoryValue(totalValue);
         } catch (error) {
             console.error('Error fetching forecast data:', error);
         } finally {
@@ -143,6 +225,15 @@ export default function ManagerDashboard() {
     };
 
     const handleStoreChange = (storeId: string) => {
+        // Prevent store changes if user is assigned to specific store
+        const userData = localStorage.getItem('user');
+        if (userData) {
+            const parsedUser = JSON.parse(userData);
+            if (parsedUser.store_id) {
+                // User is locked to their store, don't allow changes
+                return;
+            }
+        }
         setSelectedStore(storeId);
         fetchForecastData(storeId || undefined);
     };
@@ -197,6 +288,25 @@ export default function ManagerDashboard() {
                                 </div>
                                 <span className="text-xl font-bold gradient-text">StockSensePro</span>
                             </div>
+                            <div className="hidden md:flex items-center gap-3">
+                                {!userStore && (
+                                    <select
+                                        value={selectedStore}
+                                        onChange={(e) => handleStoreChange(e.target.value)}
+                                        className="px-3 py-1.5 bg-surface-elevated border border-white/10 rounded-lg text-sm focus:outline-none focus:border-secondary"
+                                    >
+                                        <option value="">All Stores</option>
+                                        <option value="S1">Store S1</option>
+                                        <option value="S2">Store S2</option>
+                                        <option value="S3">Store S3</option>
+                                    </select>
+                                )}
+                                {userStore && (
+                                    <div className="px-3 py-1.5 bg-surface-elevated border border-secondary/30 rounded-lg text-sm text-secondary font-medium">
+                                        Store: {userStore}
+                                    </div>
+                                )}
+                            </div>
                             <div className="hidden md:flex items-center gap-1">
                                 {['overview', 'forecasts', 'orders', 'inventory', 'alerts'].map((tab) => (
                                     <button
@@ -213,17 +323,24 @@ export default function ManagerDashboard() {
                             </div>
                         </div>
                         <div className="flex items-center gap-4">
-                            {/* Store Filter */}
-                            <select
-                                value={selectedStore}
-                                onChange={(e) => handleStoreChange(e.target.value)}
-                                className="bg-slate-900 text-white border border-white/20 rounded-lg py-1.5 px-3 text-xs focus:ring-1 focus:ring-secondary outline-none"
-                            >
-                                <option value="">All Stores</option>
-                                <option value="S1">Store S1</option>
-                                <option value="S2">Store S2</option>
-                                <option value="S3">Store S3</option>
-                            </select>
+                            {/* Store Filter - only show for head manager */}
+                            {!userStore && (
+                                <select
+                                    value={selectedStore}
+                                    onChange={(e) => handleStoreChange(e.target.value)}
+                                    className="bg-slate-900 text-white border border-white/20 rounded-lg py-1.5 px-3 text-xs focus:ring-1 focus:ring-secondary outline-none"
+                                >
+                                    <option value="">All Stores</option>
+                                    <option value="S1">Store S1</option>
+                                    <option value="S2">Store S2</option>
+                                    <option value="S3">Store S3</option>
+                                </select>
+                            )}
+                            {userStore && (
+                                <div className="bg-secondary/20 text-secondary border border-secondary/30 rounded-lg py-1.5 px-3 text-xs font-medium">
+                                    Store: {userStore}
+                                </div>
+                            )}
                             <button
                                 onClick={() => fetchForecastData(selectedStore || undefined)}
                                 className="p-2 hover:bg-white/5 rounded-lg transition-colors"
@@ -289,7 +406,7 @@ export default function ManagerDashboard() {
                             <ChartIcon size={14} />
                             View Reports
                         </Button>
-                        <Button variant="primary" size="sm">
+                        <Button variant="primary" size="sm" onClick={() => setShowPOModal(true)}>
                             Create PO
                         </Button>
                     </div>
@@ -301,10 +418,9 @@ export default function ManagerDashboard() {
                         <div className="flex items-center justify-between">
                             <div>
                                 <p className="text-xs text-muted uppercase tracking-wider">Total Inventory Value</p>
-                                <h3 className="text-2xl font-bold mt-1">$621K</h3>
+                                <h3 className="text-2xl font-bold mt-1">${(totalInventoryValue / 1000).toFixed(0)}K</h3>
                                 <div className="flex items-center gap-1 mt-1">
-                                    <TrendingUpIcon size={12} className="text-success" />
-                                    <span className="text-xs text-success">+2.3%</span>
+                                    <span className="text-xs text-muted">From real inventory data</span>
                                 </div>
                             </div>
                             <div className="w-10 h-10 bg-success/10 rounded-lg flex items-center justify-center text-success">
@@ -355,209 +471,68 @@ export default function ManagerDashboard() {
 
                 {/* Main Content Grid */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
-                    {/* Alerts Panel */}
-                    <Card glass className="lg:col-span-1">
-                        <CardHeader>
-                            <div className="flex items-center justify-between">
-                                <CardTitle className="flex items-center gap-2 text-lg">
-                                    <BellIcon size={18} className="text-error" />
-                                    ML-Generated Alerts
-                                    <span className="ml-1 px-2 py-0.5 bg-error/20 text-error text-xs rounded-full">{alerts.length}</span>
-                                </CardTitle>
-                            </div>
-                        </CardHeader>
-                        <CardContent>
-                            {forecastLoading ? (
-                                <div className="text-center py-8 text-muted">Loading alerts...</div>
-                            ) : alerts.length === 0 ? (
-                                <div className="text-center py-8 text-muted">
-                                    <CheckIcon size={32} className="mx-auto mb-2 text-success" />
-                                    <p>No alerts - all stock levels healthy!</p>
-                                </div>
-                            ) : (
-                                <div className="space-y-3">
-                                    {alerts.slice(0, 5).map((alert) => (
-                                        <div
-                                            key={alert.id}
-                                            className={`p-3 rounded-lg border-l-4 ${getSeverityColor(alert.severity)}`}
-                                        >
-                                            <p className="text-sm font-medium">{alert.message}</p>
-                                            <p className="text-xs text-muted mt-1">
-                                                Store: {alert.store_id} • Stock: {alert.current_stock} • Forecast: {alert.predicted_demand.toFixed(0)}
-                                            </p>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                            <Button variant="ghost" className="w-full mt-4 text-xs">
-                                View All Alerts
-                            </Button>
-                        </CardContent>
-                    </Card>
-
-                    {/* Forecasts Table */}
-                    <Card glass className="lg:col-span-2">
-                        <CardHeader>
-                            <div className="flex items-center justify-between">
-                                <div>
-                                    <CardTitle className="flex items-center gap-2 text-lg">
-                                        <ChartIcon size={18} className="text-primary" />
-                                        ML Demand Forecasts
-                                    </CardTitle>
-                                    <CardDescription>7-day demand predictions from TFT+GNN model</CardDescription>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <Badge variant="success">Live</Badge>
-                                    <Button variant="ghost" size="sm" onClick={() => router.push('/forecasts')}>View All</Button>
-                                </div>
-                            </div>
-                        </CardHeader>
-                        <CardContent>
-                            {forecastLoading ? (
-                                <div className="text-center py-8 text-muted">Loading forecasts...</div>
-                            ) : (
-                                <Table>
-                                    <TableHeader>
-                                        <TableRow>
-                                            <TableHead>Product</TableHead>
-                                            <TableHead>Store</TableHead>
-                                            <TableHead className="text-right">Stock</TableHead>
-                                            <TableHead className="text-right">7d Forecast</TableHead>
-                                            <TableHead className="text-right">Status</TableHead>
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {forecasts.slice(0, 8).map((item) => (
-                                            <TableRow key={`${item.sku}-${item.store_id}`} className="hover:bg-white/5">
-                                                <TableCell>
-                                                    <div>
-                                                        <div className="font-medium text-sm">{item.product_name}</div>
-                                                        <div className="text-xs text-muted font-mono">{item.sku}</div>
-                                                    </div>
-                                                </TableCell>
-                                                <TableCell className="text-sm">{item.store_id}</TableCell>
-                                                <TableCell className="text-right font-medium">{item.current_stock}</TableCell>
-                                                <TableCell className="text-right">
-                                                    <span className={item.seven_day_forecast > item.current_stock ? 'text-error' : 'text-foreground'}>
-                                                        {item.seven_day_forecast.toFixed(0)}
-                                                    </span>
-                                                </TableCell>
-                                                <TableCell className="text-right">
-                                                    {getStatusBadge(item.stock_status)}
-                                                </TableCell>
-                                            </TableRow>
-                                        ))}
-                                    </TableBody>
-                                </Table>
-                            )}
-                        </CardContent>
-                    </Card>
+                    <AlertsPanel alerts={alerts} forecastLoading={forecastLoading} getSeverityColor={getSeverityColor} />
+                    <ForecastsTable forecasts={forecasts} forecastLoading={forecastLoading} getStatusBadge={getStatusBadge} router={router} />
                 </div>
 
                 {/* Bottom Section */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                    {/* Purchase Orders */}
-                    <Card glass>
-                        <CardHeader>
-                            <div className="flex items-center justify-between">
-                                <div>
-                                    <CardTitle className="flex items-center gap-2 text-lg">
-                                        <BriefcaseIcon size={18} className="text-secondary" />
-                                        Purchase Orders
-                                    </CardTitle>
-                                    <CardDescription>Recent orders and their status</CardDescription>
-                                </div>
-                                <Button variant="primary" size="sm">+ New PO</Button>
-                            </div>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="space-y-3">
-                                {mockPurchaseOrders.map((po) => (
-                                    <div key={po.id} className="flex items-center justify-between p-4 bg-white/5 rounded-lg border border-white/5 hover:border-white/10 transition-all">
-                                        <div className="flex items-center gap-4">
-                                            <div className="w-10 h-10 bg-surface-elevated rounded-lg flex items-center justify-center">
-                                                <BriefcaseIcon size={16} className="text-muted" />
-                                            </div>
-                                            <div>
-                                                <div className="font-medium text-sm">{po.id}</div>
-                                                <div className="text-xs text-muted">{po.supplier} • {po.items} items</div>
-                                            </div>
-                                        </div>
-                                        <div className="text-right">
-                                            <div className="font-bold text-sm">${po.total.toLocaleString()}</div>
-                                            <div className="mt-1">{getStatusBadge(po.status)}</div>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </CardContent>
-                    </Card>
-
-                    {/* Inventory by Store */}
-                    <Card glass>
-                        <CardHeader>
-                            <div className="flex items-center justify-between">
-                                <div>
-                                    <CardTitle className="flex items-center gap-2 text-lg">
-                                        <DatabaseIcon size={18} className="text-info" />
-                                        Inventory by Store
-                                    </CardTitle>
-                                    <CardDescription>Stock health across locations</CardDescription>
-                                </div>
-                                <Button variant="ghost" size="sm">Manage</Button>
-                            </div>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="space-y-4">
-                                {mockInventorySummary.map((store) => (
-                                    <div key={store.store} className="p-4 bg-white/5 rounded-lg border border-white/5">
-                                        <div className="flex items-center justify-between mb-3">
-                                            <div className="font-medium">{store.store}</div>
-                                            <div className="text-sm text-muted">${(store.value / 1000).toFixed(0)}K value</div>
-                                        </div>
-                                        <div className="flex items-center gap-4 text-sm">
-                                            <div className="flex items-center gap-2">
-                                                <span className="w-2 h-2 bg-success rounded-full"></span>
-                                                <span className="text-muted">{store.totalSKUs - store.lowStock - store.criticalStock} OK</span>
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                <span className="w-2 h-2 bg-warning rounded-full"></span>
-                                                <span className="text-muted">{store.lowStock} Low</span>
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                <span className="w-2 h-2 bg-error rounded-full"></span>
-                                                <span className="text-muted">{store.criticalStock} Critical</span>
-                                            </div>
-                                        </div>
-                                        {/* Progress bar */}
-                                        <div className="mt-3 h-2 bg-surface-elevated rounded-full overflow-hidden flex">
-                                            <div
-                                                className="bg-success h-full"
-                                                style={{ width: `${((store.totalSKUs - store.lowStock - store.criticalStock) / store.totalSKUs) * 100}%` }}
-                                            ></div>
-                                            <div
-                                                className="bg-warning h-full"
-                                                style={{ width: `${(store.lowStock / store.totalSKUs) * 100}%` }}
-                                            ></div>
-                                            <div
-                                                className="bg-error h-full"
-                                                style={{ width: `${(store.criticalStock / store.totalSKUs) * 100}%` }}
-                                            ></div>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </CardContent>
-                    </Card>
+                    <PurchaseOrders purchaseOrders={purchaseOrders} forecastLoading={forecastLoading} getStatusBadge={getStatusBadge} setShowPOModal={setShowPOModal} />
+                    <InventoryByStore inventoryByStore={inventoryByStore} />
                 </div>
 
                 {/* LLM Assistant */}
-                <InsightAssistant
-                    forecasts={forecasts}
-                    alerts={alerts}
-                    summary={summary}
-                />
-            </div>
+                {/* @ts-expect-error: Type mismatch due to differing ForecastAlert types, but runtime shape is compatible */}
+                <InsightAssistant forecasts={forecasts} alerts={alerts} summary={summary} />
+
+                {/* PO Creation Modal */}
+                <PurchaseOrderModal
+            showPOModal={showPOModal}
+            setShowPOModal={setShowPOModal}
+            alerts={alerts}
+            poItems={poItems}
+            setPOItems={setPOItems}
+            poNotes={poNotes}
+            setPONotes={setPONotes}
+            handleCreatePO={async () => {
+              if (poItems.length === 0) {
+                alert('Please add at least one item to the PO');
+                return;
+              }
+              const userData = localStorage.getItem('user');
+              if (!userData) return;
+              const parsedUser = JSON.parse(userData);
+              const storeId = parsedUser.store_id || selectedStore || 'S1';
+              try {
+                const res = await fetch(`${API_URL}/api/purchase-orders/`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    store_id: storeId,
+                    created_by_user_id: parsedUser.id,
+                    items: poItems,
+                    notes: poNotes || null,
+                    expected_delivery_date: null
+                  })
+                });
+                if (res.ok) {
+                  const newPO = await res.json();
+                  setPurchaseOrders([newPO, ...purchaseOrders]);
+                  setShowPOModal(false);
+                  setPOItems([]);
+                  setPONotes('');
+                  alert(`Purchase Order ${newPO.po_number} created successfully!`);
+                } else {
+                  const error = await res.json();
+                  alert(`Failed to create PO: ${error.detail || 'Unknown error'}`);
+                }
+              } catch (error) {
+                console.error('Failed to create PO:', error);
+                alert('Failed to create purchase order');
+              }
+            }}
+          />
         </div>
+      </div>
     );
 }

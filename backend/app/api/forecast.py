@@ -20,11 +20,17 @@ from datetime import date, timedelta
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 import random
+import httpx
+import asyncio
 
 from app.database import get_db
 from app.models.transaction import Transaction, DailyDemand
+from app.models.inventory import Inventory
 
 router = APIRouter(prefix="/forecast", tags=["Forecast"])
+
+# ML Service URL
+ML_SERVICE_URL = "http://localhost:8001"
 
 
 # ==========================================
@@ -58,9 +64,28 @@ CATEGORY_NAMES = {
     "BOOK": "Books & Media",
 }
 
+# Load product catalog from CSV
+PRODUCT_CATALOG = {}
+try:
+    import csv
+    import os
+    catalog_path = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'ml', 'data', 'raw', 'categories_products.csv')
+    if os.path.exists(catalog_path):
+        with open(catalog_path, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                PRODUCT_CATALOG[row['SKU_ID']] = row['Product_Name']
+except Exception as e:
+    print(f"Warning: Could not load product catalog: {e}")
+
 
 def get_product_name(product_id: str) -> str:
-    """Get a friendly product name from SKU."""
+    """Get real product name from catalog CSV."""
+    # Try to get from catalog first
+    if product_id in PRODUCT_CATALOG:
+        return PRODUCT_CATALOG[product_id]
+    
+    # Fallback to generated name
     parts = product_id.split('_')
     if len(parts) >= 2:
         category = parts[1][:4]
@@ -107,8 +132,30 @@ class ProductForecastDetail(BaseModel):
 # HELPER FUNCTIONS
 # ==========================================
 
-def calculate_confidence(data_points: int) -> tuple:
-    """Calculate confidence based on data availability."""
+async def get_ml_confidence() -> float:
+    """Get ML model confidence from inference service."""
+    try:
+        async with httpx.AsyncClient(timeout=2.0) as client:
+            response = await client.get(f"{ML_SERVICE_URL}/health")
+            if response.status_code == 200:
+                data = response.json()
+                return 0.85 if data.get("model_loaded") else 0.55
+    except:
+        pass
+    return 0.55
+
+def calculate_confidence(data_points: int, ml_confidence: float = None) -> tuple:
+    """Calculate confidence based on data availability and ML model."""
+    # Use ML confidence if available, otherwise fallback to data-based
+    if ml_confidence is not None and ml_confidence > 0.7:
+        if ml_confidence >= 0.90:
+            return ml_confidence, "high"
+        elif ml_confidence >= 0.80:
+            return ml_confidence, "medium"
+        else:
+            return ml_confidence, "medium"
+    
+    # Fallback to data-based confidence
     if data_points >= 300:
         return 0.92, "high"
     elif data_points >= 100:
@@ -117,6 +164,35 @@ def calculate_confidence(data_points: int) -> tuple:
         return 0.72, "medium"
     else:
         return 0.55, "low"
+
+
+async def get_ml_forecast(sku: str, store_id: str, days: int = 7) -> List[Dict]:
+    """Get forecast from ML inference service."""
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get(
+                f"{ML_SERVICE_URL}/predict",
+                params={"sku": sku, "store_id": store_id, "days_ahead": days}
+            )
+            if response.status_code == 200:
+                data = response.json()
+                forecasts = data.get("forecasts", [])
+                result = []
+                for f in forecasts:
+                    if f["sku"] == sku and f["store_id"] == store_id:
+                        result.append({
+                            "date": f["date"],
+                            "actual": None,
+                            "forecast": f["predicted_demand"],
+                            "is_forecast": True
+                        })
+                if result:
+                    return result
+    except Exception as e:
+        print(f"ML Service error: {e}")
+    
+    # Fallback to simple forecast
+    return None
 
 
 def generate_forecast(avg_demand: float, store_id: str, days: int = 7) -> List[Dict]:
@@ -218,14 +294,14 @@ def get_products(
 
 
 @router.get("/detail/{sku}", response_model=ProductForecastDetail)
-def get_product_forecast_detail(
+async def get_product_forecast_detail(
     sku: str,
     store_id: str = Query("S1", description="Store ID"),
     history_days: int = Query(30, description="Days of historical data", ge=7, le=365),
     forecast_days: int = Query(7, description="Days to forecast", ge=1, le=30),
     db: Session = Depends(get_db)
 ):
-    """Get detailed forecast with LIVE database data."""
+    """Get detailed forecast with LIVE database data and ML predictions."""
     max_date = db.query(func.max(DailyDemand.date)).filter(
         DailyDemand.product_id == sku,
         DailyDemand.store_id == store_id
@@ -255,7 +331,10 @@ def get_product_forecast_detail(
         total_demand += record.total_quantity
     
     avg_demand = total_demand / len(historical_query) if historical_query else 10.0
-    forecast = generate_forecast(avg_demand, store_id, forecast_days)
+    
+    # Try to get ML forecast first
+    ml_forecast = await get_ml_forecast(sku, store_id, forecast_days)
+    forecast = ml_forecast if ml_forecast else generate_forecast(avg_demand, store_id, forecast_days)
     demand_data = historical + forecast
     
     total_forecast = sum(f["forecast"] for f in forecast if f["forecast"])
@@ -263,7 +342,12 @@ def get_product_forecast_detail(
     first_record = historical_query[0] if historical_query else None
     category_code = first_record.product_category if first_record else sku.split('_')[1][:4] if '_' in sku else 'UNKN'
     
-    current_stock = int(avg_demand * 5 + hash(f"{sku}{store_id}") % 50)
+    # Get REAL inventory from inventory table
+    inv_record = db.query(Inventory).filter(
+        Inventory.sku == sku,
+        Inventory.store_id == store_id
+    ).first()
+    current_stock = int(inv_record.quantity) if inv_record else 0
     avg_daily_forecast = total_forecast / forecast_days if forecast_days > 0 else 1
     stock_days = current_stock / avg_daily_forecast if avg_daily_forecast > 0 else 999
     
@@ -274,7 +358,9 @@ def get_product_forecast_detail(
     else:
         status = "ok"
     
-    confidence, conf_level = calculate_confidence(len(historical_query))
+    # Get ML confidence
+    ml_confidence = await get_ml_confidence()
+    confidence, conf_level = calculate_confidence(len(historical_query), ml_confidence)
     
     return ProductForecastDetail(
         sku=sku,
@@ -294,13 +380,16 @@ def get_product_forecast_detail(
 
 
 @router.get("/by-product")
-def get_forecasts_by_product(
+async def get_forecasts_by_product(
     store_id: Optional[str] = Query(None, description="Filter by store ID"),
     category: Optional[str] = Query(None, description="Filter by category"),
     limit: int = Query(20, description="Number of products to return"),
     db: Session = Depends(get_db)
 ):
-    """Get forecasts grouped by product from database."""
+    """Get forecasts grouped by product from database with ML confidence."""
+    # Get ML confidence once for all products
+    ml_confidence = await get_ml_confidence()
+    
     max_date = db.query(func.max(DailyDemand.date)).scalar()
     week_ago = max_date - timedelta(days=7) if max_date else date.today() - timedelta(days=7)
     
@@ -331,7 +420,12 @@ def get_forecasts_by_product(
         avg_daily = float(row.avg_daily) if row.avg_daily else 10
         total_7d = float(row.total_7d) if row.total_7d else 70
         
-        current_stock = int(avg_daily * 5 + hash(f"{row.product_id}{row.store_id}") % 50)
+        # Get REAL inventory from inventory table
+        inv_record = db.query(Inventory).filter(
+            Inventory.sku == row.product_id,
+            Inventory.store_id == row.store_id
+        ).first()
+        current_stock = int(inv_record.quantity) if inv_record else 0
         stock_days = current_stock / avg_daily if avg_daily > 0 else 999
         
         if stock_days < 3:
@@ -341,7 +435,7 @@ def get_forecasts_by_product(
         else:
             status = "ok"
         
-        confidence, conf_level = calculate_confidence(row.data_points)
+        confidence, conf_level = calculate_confidence(row.data_points, ml_confidence)
         
         products.append({
             "sku": row.product_id,
@@ -362,13 +456,13 @@ def get_forecasts_by_product(
 
 
 @router.get("/alerts")
-def get_forecast_alerts(
+async def get_alerts(
     store_id: Optional[str] = Query(None, description="Filter by store ID"),
     category: Optional[str] = Query(None, description="Filter by category"),
     db: Session = Depends(get_db)
 ):
     """Get forecast-based alerts from database."""
-    products = get_forecasts_by_product(store_id=store_id, category=category, limit=100, db=db)
+    products = await get_forecasts_by_product(store_id=store_id, category=category, limit=100, db=db)
     
     alerts = []
     for p in products:
@@ -391,13 +485,13 @@ def get_forecast_alerts(
 
 
 @router.get("/summary")
-def get_forecast_summary(
+async def get_forecast_summary(
     store_id: Optional[str] = Query(None),
     category: Optional[str] = Query(None),
     db: Session = Depends(get_db)
 ):
-    """Get summary statistics from database."""
-    products = get_forecasts_by_product(store_id=store_id, category=category, limit=1000, db=db)
+    """Get summary statistics from database with ML confidence."""
+    products = await get_forecasts_by_product(store_id=store_id, category=category, limit=1000, db=db)
     
     critical = sum(1 for p in products if p["stock_status"] == "critical")
     low = sum(1 for p in products if p["stock_status"] == "low")
@@ -409,4 +503,33 @@ def get_forecast_summary(
         "low_stock_count": low,
         "avg_confidence": round(sum(confidences) / len(confidences), 2) if confidences else 0,
         "data_source": "PostgreSQL (live)"
+    }
+
+
+@router.get("/inventory-value")
+async def get_inventory_value(
+    store_id: Optional[str] = Query(None),
+    db: Session = Depends(get_db)
+):
+    """Get real inventory value from inventory table."""
+    query = db.query(
+        func.sum(Inventory.quantity).label('total_units'),
+        func.count(Inventory.id).label('total_skus')
+    )
+    
+    if store_id:
+        query = query.filter(Inventory.store_id == store_id)
+    
+    result = query.first()
+    total_units = float(result.total_units) if result.total_units else 0
+    total_skus = int(result.total_skus) if result.total_skus else 0
+    
+    # Estimate value at $10 average per unit (can be improved with actual pricing)
+    estimated_value = total_units * 10
+    
+    return {
+        "total_units": int(total_units),
+        "total_skus": total_skus,
+        "estimated_value": round(estimated_value, 2),
+        "data_source": "inventory_table"
     }
