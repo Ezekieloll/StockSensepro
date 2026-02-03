@@ -87,58 +87,43 @@ Current baseline demand: {baseline_demand:.0f} units/day (total across all categ
 
 Analyze which SPECIFIC CATEGORIES will be affected and by how much.
 
-CRITICAL MULTIPLIER RULES:
-- Multiplier > 1.0 = DEMAND INCREASES (e.g., 1.3 = +30% demand)
-- Multiplier < 1.0 = DEMAND DECREASES (e.g., 0.8 = -20% demand)
-- PRICE INCREASE → Demand DECREASES (use multiplier < 1.0)
-- PRICE DECREASE → Demand INCREASES (use multiplier > 1.0)
-- Positive events (holidays, competitor closure) → multiplier > 1.0
-- Negative events (price hikes, recession) → multiplier < 1.0
+CRITICAL RULE - READ THIS FIRST:
+=================================
+When prices INCREASE → people buy LESS → multiplier MUST be < 1.0
+When prices DECREASE → people buy MORE → multiplier MUST be > 1.0
 
-ECONOMIC RELATIONSHIPS:
-1. SUBSTITUTE GOODS - If X price ↑, substitute Y demand ↑
-   - "Beef expensive" → Chicken/MEAT: 1.2, Beef: 0.7
-   - "Furniture expensive" → people might delay ALL furniture purchases
-   
-2. COMPLEMENTARY GOODS - If X price ↑, complement Y demand ↓
-   - "Mattress expensive" → Bedding (BEDM) also drops: 0.85
-   - "Electronics expensive" → accessories also drop
-   
-3. ELASTICITY - Price sensitivity varies by category:
-   - ESSENTIALS (GROC, FRPR, MEAT): Less elastic → smaller drops (0.85-0.92)
-   - LUXURIES (JWCH, FURH, ELEC): More elastic → larger drops (0.5-0.7)
-   - "Grocery prices +10%" → demand only -8% (0.92)
-   - "Jewelry prices +10%" → demand -40% (0.6)
-   
-4. BUDGET CONSTRAINTS - Expensive categories steal wallet share:
-   - "Housing costs up" → ALL discretionary spending down (FURH, CLOT, ELEC: 0.8)
-   - "Healthcare expensive" → Non-essentials suffer more than food
-   
-5. INCOME EFFECTS:
-   - RECESSION → Luxuries drop hard, essentials stable or up (people eat at home)
-   - BOOM → Non-essentials surge more than essentials
-   
-6. TEMPORAL EFFECTS:
-   - BIG TICKET items (FURH, ELEC, AUTO): Price ↑ = people DELAY = big drop (0.5-0.7)
-   - DAILY NEEDS (GROC, PRSN): Price ↑ = people still buy = small drop (0.9)
-   
-7. CROSS-CATEGORY IMPACTS:
-   - Weather events → ESSENTIALS spike (GROC, FRPR: 1.5), non-essentials drop (CLOT, ELEC: 0.8)
-   - Holidays → FOOD + GIFTS surge (BKDY, TOYG: 2.0), others normal
-   - Competitor closure → ALL categories benefit (1.3-1.5 across board)
+THIS IS THE MOST IMPORTANT RULE. NEVER VIOLATE IT.
 
 Examples:
-- "Rice prices increasing" → {{"GROC": 0.85}} (essential but still drops)
-- "Furniture prices skyrocket" → {{"FURH": 0.6, "BEDM": 0.8}} (luxury + delay + complement)
-- "Economic recession" → {{"FURH": 0.5, "JWCH": 0.4, "ELEC": 0.6, "GROC": 1.05}} (luxuries crushed, people cook at home)
-- "Major snowstorm tomorrow" → {{"FRPR": 1.6, "GROC": 1.5, "BKDY": 1.4, "FURH": 0.7}} (essentials surge, skip furniture shopping)
-- "Holiday sale on electronics" → {{"ELEC": 1.8}} (price down = demand way up for elastic goods)
+- "Rice prices up" → Rice demand DOWN → {{"GROC": 0.85}}
+- "Rice prices down" → Rice demand UP → {{"GROC": 1.3}}
+- "Electronics sale" → Electronics demand UP → {{"ELEC": 1.5}}
+- "Beef expensive" → Beef demand DOWN → {{"MEAT": 0.7}}
 
-Consider:
-- Weather events increase food/essentials demand (multiplier > 1.0)
-- Economic recession decreases non-essential demand (multiplier < 1.0)
-- Price increases decrease category demand (multiplier < 1.0)
-- Holiday events increase relevant category demand (multiplier > 1.0)
+MULTIPLIER MEANING:
+- Multiplier > 1.0 = DEMAND INCREASES (e.g., 1.3 = +30% demand)
+- Multiplier < 1.0 = DEMAND DECREASES (e.g., 0.8 = -20% demand)
+- Multiplier = 1.0 = NO CHANGE
+
+KEY SCENARIOS:
+1. PRICE INCREASES → Demand goes DOWN (multiplier < 1.0)
+   - "Rice expensive" → {{"GROC": 0.85}}
+   - "Furniture expensive" → {{"FURH": 0.6}}
+   
+2. SALES/PROMOTIONS → Demand goes UP (multiplier > 1.0)
+   - "Electronics sale" → {{"ELEC": 1.8}}
+   
+3. WEATHER EVENTS → Essentials UP, Others DOWN
+   - "Snowstorm" → {{"GROC": 1.5, "FRPR": 1.6, "FURH": 0.7}}
+   
+4. RECESSION → Luxuries DOWN hard, Essentials stable
+   - "Economic crisis" → {{"FURH": 0.5, "JWCH": 0.4, "GROC": 1.0}}
+   
+5. HOLIDAYS → Food + Gifts UP
+   - "Christmas" → {{"BKDY": 2.0, "TOYG": 2.2, "MEAT": 1.9}}
+   
+6. COMPETITOR CLOSURE → Everything UP
+   - "Competitor closed" → ALL categories 1.3-1.5
 
 Respond ONLY with JSON (no markdown):
 {{
