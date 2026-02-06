@@ -1,5 +1,5 @@
 # Core numerical stack
-numpy>=1.26,<2.1
+numpy>=1.26,<2.0.0
 pandas>=2.1,<2.3
 
 # Machine learning

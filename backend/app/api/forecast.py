@@ -128,6 +128,12 @@ class ProductForecastDetail(BaseModel):
     data_source: str
 
 
+class HistoricalDemandResponse(BaseModel):
+    sku: str
+    store_id: str
+    history: List[DemandDataPoint]
+
+
 # ==========================================
 # HELPER FUNCTIONS
 # ==========================================
@@ -376,6 +382,42 @@ async def get_product_forecast_detail(
         stock_days_remaining=round(stock_days, 1),
         stock_status=status,
         data_source="PostgreSQL (live)"
+    )
+
+
+@router.get("/history/{sku}", response_model=HistoricalDemandResponse)
+def get_product_history(
+    sku: str,
+    store_id: str = Query("S1", description="Store ID"),
+    start_date: date = Query(None),
+    end_date: date = Query(None),
+    db: Session = Depends(get_db)
+):
+    """Get real historical demand data for a product."""
+    query = db.query(DailyDemand).filter(
+        DailyDemand.product_id == sku,
+        DailyDemand.store_id == store_id
+    )
+    
+    if start_date:
+        query = query.filter(DailyDemand.date >= start_date)
+    if end_date:
+        query = query.filter(DailyDemand.date <= end_date)
+    
+    results = query.order_by(DailyDemand.date).all()
+    
+    history = []
+    for row in results:
+        history.append(DemandDataPoint(
+            date=row.date.isoformat(),
+            actual=float(row.total_quantity),
+            is_forecast=False
+        ))
+    
+    return HistoricalDemandResponse(
+        sku=sku,
+        store_id=store_id,
+        history=history
     )
 
 

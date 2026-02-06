@@ -120,7 +120,7 @@ const aggregateData = (data: DataPoint[], periodicity: 'daily' | 'weekly' | 'mon
 export default function AnalysisView() {
     // --- Filters State ---
     const [selectedStore, setSelectedStore] = useState('S1');
-    const [startDate, setStartDate] = useState('2024-01-01');
+    const [startDate, setStartDate] = useState('2023-01-01');
     const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
     const [searchQuery, setSearchQuery] = useState('');
 
@@ -166,29 +166,55 @@ export default function AnalysisView() {
 
     // Generate/Fetch Data
     useEffect(() => {
-        setLoading(true);
-        const timer = setTimeout(() => {
+        const fetchHistoryData = async () => {
             if (selectedProducts.length === 0) {
                 setChartData([]);
-                setLoading(false);
                 return;
             }
-            const selectedProdObjs = products.filter(p => selectedProducts.includes(p.sku));
-            let data = generateMockHistory(selectedProdObjs, startDate, endDate, selectedStore);
 
-            // Auto-Aggregation logic based on count
-            if (data.length > 300) {
-                data = aggregateData(data, 'monthly');
-            } else if (data.length > 60) {
-                data = aggregateData(data, 'weekly');
+            setLoading(true);
+            try {
+                // Fetch data for all selected products in parallel
+                const fetchPromises = selectedProducts.map(sku =>
+                    fetch(`${API_URL}/forecast/history/${sku}?store_id=${selectedStore}&start_date=${startDate}&end_date=${endDate}`)
+                        .then(res => res.ok ? res.json() : { history: [] })
+                );
+
+                const results = await Promise.all(fetchPromises);
+
+                // Merge data from multiple products by date
+                const dateMap: { [date: string]: DataPoint } = {};
+
+                results.forEach((result, idx) => {
+                    const sku = selectedProducts[idx];
+                    result.history.forEach((dp: any) => {
+                        if (!dateMap[dp.date]) {
+                            dateMap[dp.date] = { date: dp.date };
+                        }
+                        dateMap[dp.date][sku] = dp.actual;
+                    });
+                });
+
+                // Convert map back to sorted array
+                let combinedData = Object.values(dateMap).sort((a, b) => a.date.localeCompare(b.date));
+
+                // Auto-Aggregation logic based on count
+                if (combinedData.length > 300) {
+                    combinedData = aggregateData(combinedData, 'monthly');
+                } else if (combinedData.length > 60) {
+                    combinedData = aggregateData(combinedData, 'weekly');
+                }
+
+                setChartData(combinedData);
+            } catch (error) {
+                console.error("Error fetching historical data:", error);
+            } finally {
+                setLoading(false);
             }
+        };
 
-            setChartData(data);
-            setLoading(false);
-        }, 500);
-
-        return () => clearTimeout(timer);
-    }, [selectedProducts, startDate, endDate, selectedStore, products]);
+        fetchHistoryData();
+    }, [selectedProducts, startDate, endDate, selectedStore]);
 
     const toggleProduct = (sku: string) => {
         if (selectedProducts.includes(sku)) {
@@ -507,8 +533,23 @@ export default function AnalysisView() {
                         <div className="w-full overflow-x-auto">
                             {renderChart()}
                         </div>
-                        <div className="mt-3 flex items-center gap-2 text-[10px] text-muted">
-                            <span className="w-2 h-2 rounded-full bg-primary"></span>
+                        {selectedProducts.length > 0 && (
+                            <div className="mt-4 flex flex-wrap gap-4 px-2">
+                                {selectedProducts.map((sku, idx) => {
+                                    const product = products.find(p => p.sku === sku);
+                                    const color = colors[idx % colors.length];
+                                    return (
+                                        <div key={sku} className="flex items-center gap-2">
+                                            <div className="w-3 h-3 rounded-full shadow-sm" style={{ backgroundColor: color }}></div>
+                                            <span className="text-xs font-medium text-foreground/80">{product?.name || sku}</span>
+                                            <span className="text-[10px] text-muted font-mono">{sku}</span>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                        <div className="mt-6 flex items-center gap-2 text-[10px] text-muted border-t border-white/5 pt-4">
+                            <span className="w-2 h-2 rounded-full bg-primary/40"></span>
                             <span>Lines represent average demand values over time. For dense datasets, aggregation automatically switches to weekly/monthly.</span>
                         </div>
                     </CardContent>
