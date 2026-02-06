@@ -5,12 +5,25 @@ Loads the pre-built GNN graph and propagates demand impacts through product rela
 import torch
 import json
 import os
+import sys
 from typing import Dict, List, Tuple, Optional
 from pathlib import Path
 
 # Path to GNN graph files
 GNN_MODEL_DIR = Path(__file__).parent.parent.parent.parent / "ml" / "models" / "gnn"
 PRODUCT_NAMES_FILE = Path(__file__).parent.parent.parent.parent / "ml" / "data" / "raw" / "categories_products.csv"
+
+# Add ML config directory to path for category relationships
+ML_CONFIG_DIR = Path(__file__).parent.parent.parent.parent / "ml" / "config"
+if str(ML_CONFIG_DIR) not in sys.path:
+    sys.path.insert(0, str(ML_CONFIG_DIR))
+
+try:
+    from category_relationships import are_categories_related, get_propagation_multiplier, CATEGORY_NAMES
+    CATEGORY_RULES_LOADED = True
+except ImportError:
+    CATEGORY_RULES_LOADED = False
+    print("⚠️ Category relationship rules not found - using fallback propagation")
 
 class GNNGraphPropagator:
     def __init__(self):
@@ -20,6 +33,7 @@ class GNNGraphPropagator:
         self.metadata = None
         self.sku_to_name = {}  # SKU -> Product Name mapping
         self.graph_loaded = False
+        self.use_category_rules = CATEGORY_RULES_LOADED
         self._load_graph()
         self._load_product_names()
     
@@ -134,7 +148,7 @@ class GNNGraphPropagator:
         decay_factor: float = 0.5
     ) -> Dict[str, float]:
         """
-        Propagate demand impact through GNN graph using edge weights
+        Propagate demand impact through GNN graph using edge weights AND category rules
         
         Args:
             affected_skus: List of directly affected product SKUs
@@ -165,16 +179,46 @@ class GNNGraphPropagator:
             for sku in current_layer:
                 neighbors = self.get_product_neighbors(sku, max_neighbors=30)
                 
+                # Get source category for category-aware propagation
+                source_category = self.get_category_for_sku(sku)
+                
                 for neighbor_sku, edge_weight in neighbors:
                     # Skip if already has stronger impact
                     if neighbor_sku in impacts:
                         continue
                     
-                    # Propagated impact = propagated_multiplier * edge_weight
-                    # Edge weight acts as correlation strength (0.0 to 1.0)
-                    # Example: 1.15 direct, 0.5 decay, 0.8 edge_weight → 1.0 + (0.15 * 0.5 * 0.8) = 1.06
-                    impact_delta = (propagated_multiplier - 1.0) * edge_weight
-                    neighbor_impact = 1.0 + impact_delta
+                    # CATEGORY-AWARE FILTERING: Only propagate to related categories
+                    if self.use_category_rules and source_category:
+                        neighbor_category = self.get_category_for_sku(neighbor_sku)
+                        
+                        if neighbor_category and not are_categories_related(source_category, neighbor_category):
+                            # Categories are not related - skip this neighbor
+                            continue
+                    
+                    # Calculate propagated impact
+                    if self.use_category_rules and source_category:
+                        # Use category-aware multiplier
+                        neighbor_category = self.get_category_for_sku(neighbor_sku)
+                        if neighbor_category:
+                            # Get category-based multiplier
+                            category_multiplier = get_propagation_multiplier(
+                                source_category, 
+                                neighbor_category, 
+                                propagated_multiplier
+                            )
+                            # Combine with edge weight
+                            impact_delta = (category_multiplier - 1.0) * edge_weight
+                            neighbor_impact = 1.0 + impact_delta
+                        else:
+                            # Fallback if category unknown
+                            impact_delta = (propagated_multiplier - 1.0) * edge_weight * 0.3
+                            neighbor_impact = 1.0 + impact_delta
+                    else:
+                        # Original logic: Propagated impact = propagated_multiplier * edge_weight
+                        # Edge weight acts as correlation strength (0.0 to 1.0)
+                        # Example: 1.15 direct, 0.5 decay, 0.8 edge_weight → 1.0 + (0.15 * 0.5 * 0.8) = 1.06
+                        impact_delta = (propagated_multiplier - 1.0) * edge_weight
+                        neighbor_impact = 1.0 + impact_delta
                     
                     impacts[neighbor_sku] = neighbor_impact
                     next_layer.add(neighbor_sku)

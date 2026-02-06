@@ -338,10 +338,13 @@ def main():
     # Build graph
     builder = ImprovedGraphBuilder(transactions_path, categories_path)
     
+    # UPDATED WEIGHTS (2026-02-06):
+    # Increased category_weight to reduce spurious cross-category connections
+    # Category propagation is now handled by category_relationships.py rules
     adj = builder.build_combined_graph(
-        category_weight=0.3,      # Same category connection
-        copurchase_weight=0.5,    # Bought together (strongest signal)
-        temporal_weight=0.2,      # Similar demand patterns
+        category_weight=0.7,      # ↑ Same category = meaningful relationship
+        copurchase_weight=0.2,    # ↓ Contains noise (people buy unrelated items together)
+        temporal_weight=0.1,      # ↓ Correlation ≠ causation
         save_path=output_path
     )
     
