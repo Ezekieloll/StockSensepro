@@ -12,10 +12,35 @@ from typing import List, Dict, Optional, Any
 from datetime import datetime, timedelta
 from pydantic import BaseModel
 import json
+import sys
+from pathlib import Path
 
 from app.database import get_db
 from app.models.transaction import DailyDemand
 from app.services.gnn_propagation import get_gnn_propagator
+
+# Import category names from category_relationships
+ML_CONFIG_DIR = Path(__file__).parent.parent.parent.parent / "ml" / "config"
+if str(ML_CONFIG_DIR) not in sys.path:
+    sys.path.insert(0, str(ML_CONFIG_DIR))
+
+try:
+    from category_relationships import CATEGORY_NAMES
+    USE_CATEGORY_NAMES = True
+except ImportError:
+    USE_CATEGORY_NAMES = False
+    print("⚠️ Could not import CATEGORY_NAMES, using fallback")
+    # Fallback category names (corrected from original)
+    CATEGORY_NAMES = {
+        "AUTO": "Automotive", "BABC": "Baby Care", "BAGL": "Bags & Luggage",
+        "BEDM": "Bedding & Mattress", "BEVG": "Beverages", "BKDY": "Bakery & Dairy",
+        "BOOK": "Books & Media", "CLNS": "Cleaning Supplies", "CLOT": "Clothing",
+        "ELEC": "Electronics", "FRPR": "Fresh Produce (Fruits & Vegetables)", "FRZN": "Frozen Foods",
+        "FTRW": "Footwear", "FURH": "Furniture", "GROC": "Grocery (Staples & Grains)",
+        "JWCH": "Jewelry & Watches", "KICH": "Kitchen Appliances", "MEAT": "Meat & Seafood",
+        "PETC": "Pet Care", "PRSN": "Personal Care", "SNCK": "Snacks",
+        "SPRT": "Sports Equipment", "STOF": "Stationery & Office", "TOYG": "Toys & Games"
+    }
 
 router = APIRouter(prefix="/simulations", tags=["Simulations"])
 
@@ -63,17 +88,8 @@ def analyze_scenario_with_ai(scenario_text: str, baseline_demand: float, db) -> 
             "affected_products": dict  # SKU-level impacts from graph propagation
         }
     """
-    # Category information for AI context (all 24 categories)
-    category_context = {
-        "AUTO": "Automotive", "BABC": "Baby Care", "BAGL": "Bagels",
-        "BEDM": "Bedding & Mattress", "BEVG": "Beverages", "BKDY": "Bakery",
-        "BOOK": "Books", "CLNS": "Cleaning Supplies", "CLOT": "Clothing",
-        "ELEC": "Electronics", "FRPR": "Fresh Produce & Dairy", "FRZN": "Frozen Foods",
-        "FTRW": "Footwear", "FURH": "Furniture", "GROC": "Groceries",
-        "JWCH": "Jewelry & Watches", "KICH": "Kitchenware", "MEAT": "Meat & Seafood",
-        "PETC": "Pet Care", "PRSN": "Personal Care", "SNCK": "Snacks",
-        "SPRT": "Sports & Outdoor", "STOF": "Stationery & Office", "TOYG": "Toys & Games"
-    }
+    # Use CATEGORY_NAMES imported from category_relationships
+    category_context = CATEGORY_NAMES
     
     try:
         import requests
