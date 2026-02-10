@@ -103,57 +103,76 @@ Current baseline demand: {baseline_demand:.0f} units/day (total across all categ
 
 Analyze which SPECIFIC CATEGORIES will be affected and by how much.
 
-CRITICAL RULE - READ THIS FIRST:
-=================================
-When prices INCREASE → people buy LESS → multiplier MUST be < 1.0
-When prices DECREASE → people buy MORE → multiplier MUST be > 1.0
+═══════════════════════════════════════════════════════════════
+CRITICAL RULES - FOLLOW EXACTLY:
+═══════════════════════════════════════════════════════════════
 
-THIS IS THE MOST IMPORTANT RULE. NEVER VIOLATE IT.
+1. PRICE RULE (MOST IMPORTANT):
+   When prices INCREASE → people buy LESS → multiplier MUST be < 1.0
+   When prices DECREASE/SALE → people buy MORE → multiplier MUST be > 1.0
+   NEVER VIOLATE THIS RULE.
 
-Examples:
-- "Rice prices up" → Rice demand DOWN → {{"GROC": 0.85}}
-- "Rice prices down" → Rice demand UP → {{"GROC": 1.3}}
-- "Electronics sale" → Electronics demand UP → {{"ELEC": 1.5}}
-- "Beef expensive" → Beef demand DOWN → {{"MEAT": 0.7}}
+2. DIRECT IMPACT ONLY:
+   - Sales/price changes affect ONLY the mentioned category
+   - Electronics sale → ONLY Electronics affected
+   - Rice price up → ONLY Grocery affected  
+   - Do NOT add other categories unless explicitly justified
 
-MULTIPLIER MEANING:
-- Multiplier > 1.0 = DEMAND INCREASES (e.g., 1.3 = +30% demand)
-- Multiplier < 1.0 = DEMAND DECREASES (e.g., 0.8 = -20% demand)
-- Multiplier = 1.0 = NO CHANGE
+3. DO NOT USE "DISPOSABLE INCOME" LOGIC:
+   ❌ WRONG: "Electronics sale → more money → bakery up"
+   ✅ RIGHT: "Electronics sale → ONLY electronics up"
+   A sale doesn't give people more money!
 
-KEY SCENARIOS:
-1. PRICE INCREASES → Demand goes DOWN (multiplier < 1.0)
-   - "Rice expensive" → {{"GROC": 0.85}}
-   - "Furniture expensive" → {{"FURH": 0.6}}
-   
-2. SALES/PROMOTIONS → Demand goes UP (multiplier > 1.0)
-   - "Electronics sale" → {{"ELEC": 1.8}}
-   
-3. WEATHER EVENTS → Essentials UP, Others DOWN
-   - "Snowstorm" → {{"GROC": 1.5, "FRPR": 1.6, "FURH": 0.7}}
-   
-4. RECESSION → Luxuries DOWN hard, Essentials stable
-   - "Economic crisis" → {{"FURH": 0.5, "JWCH": 0.4, "GROC": 1.0}}
-   
-5. HOLIDAYS → Food + Gifts UP
-   - "Christmas" → {{"BKDY": 2.0, "TOYG": 2.2, "MEAT": 1.9}}
-   
-6. COMPETITOR CLOSURE → Everything UP
-   - "Competitor closed" → ALL categories 1.3-1.5
+4. CROSS-CATEGORY IMPACTS ONLY FOR:
+   - Weather events (food essentials spike, non-essentials drop)
+   - Holidays (food + gifts both increase)
+   - Economic crises (luxuries drop, essentials stable)
+   - Competitor closure (all categories increase)
+   NOT for individual product sales!
+
+═══════════════════════════════════════════════════════════════
+CORRECT EXAMPLES:
+═══════════════════════════════════════════════════════════════
+
+✅ "Rice prices up" → {{"GROC": 0.85}}  (ONLY Grocery affected)
+✅ "Electronics sale" → {{"ELEC": 1.8}}  (ONLY Electronics affected)
+✅ "Furniture expensive" → {{"FURH": 0.6}}  (ONLY Furniture affected)
+✅ "Beef on sale" → {{"MEAT": 1.5}}  (ONLY Meat affected)
+
+✅ "Snowstorm forecast" → {{"GROC": 1.6, "FRPR": 1.5, "BKDY": 1.4, "BEVG": 1.3}}
+   (Weather = essentials UP, justified cross-category impact)
+
+✅ "Christmas holiday" → {{"BKDY": 2.0, "MEAT": 1.9, "TOYG": 2.2, "JWCH": 1.5}}
+   (Holiday = food + gifts UP, justified cross-category impact)
+
+═══════════════════════════════════════════════════════════════
+WRONG EXAMPLES (DO NOT DO THIS):
+═══════════════════════════════════════════════════════════════
+
+❌ "Electronics sale" → {{"ELEC": 1.8, "BKDY": 1.2, "TOYG": 1.4}}
+   WRONG! Sales affect only the specific category.
+
+❌ "Rice expensive" → {{"GROC": 1.2}}
+   WRONG! Price UP = demand DOWN. Should be < 1.0
+
+❌ "Snowstorm" → {{"GROC": 0.8}}
+   WRONG! Weather events INCREASE food demand. Should be > 1.0
+
+═══════════════════════════════════════════════════════════════
 
 Respond ONLY with JSON (no markdown):
 {{
-    "affected_categories": ["FRPR", "BKDY"],
+    "affected_categories": ["ELEC"],
     "category_impacts": {{
-        "FRPR": 1.3,
-        "BKDY": 1.5
+        "ELEC": 1.8
     }},
-    "overall_multiplier": 1.2,
-    "reasoning": "<one sentence why these categories and multipliers>",
-    "confidence": 75
+    "overall_multiplier": 1.15,
+    "reasoning": "Electronics sale increases demand for electronics only",
+    "confidence": 80
 }}
 
-If ALL categories affected equally, use empty affected_categories list.
+For single category impacts, use ONLY that category.
+For broad events (weather, holidays, recession), use multiple categories.
 """
         
         response = requests.post(
