@@ -125,7 +125,7 @@ export default function ManagerDashboard() {
         setUser(parsed);
         const assignedStore = parsed.store_id || null;
         setUserStore(assignedStore);
-        
+
         // Set selectedStore to user's assigned store if they have one
         if (assignedStore) {
             setSelectedStore(assignedStore);
@@ -143,11 +143,11 @@ export default function ManagerDashboard() {
             const userData = localStorage.getItem('user');
             const parsedUser = userData ? JSON.parse(userData) : null;
             const userAssignedStore = parsedUser?.store_id;
-            
+
             // If user has assigned store, ONLY use that - ignore all other parameters
             const effectiveStore = userAssignedStore || forcedStoreId || selectedStore;
             const storeParam = effectiveStore ? `?store_id=${effectiveStore}` : '';
-            
+
             console.log('🔒 Fetching data for store:', effectiveStore, 'User assigned:', userAssignedStore);
 
             // Fetch forecasts by product
@@ -190,7 +190,7 @@ export default function ManagerDashboard() {
                 const invRes = await fetch(`${API_URL}/forecast/inventory-value?store_id=${store}`);
                 if (invRes.ok) {
                     const invData = await invRes.json();
-                    
+
                     // Get store-specific forecast summary for stock status
                     const storeAlerts = await fetch(`${API_URL}/forecast/alerts?store_id=${store}`);
                     let lowCount = 0, criticalCount = 0;
@@ -213,7 +213,7 @@ export default function ManagerDashboard() {
 
             const inventoryData = (await Promise.all(inventoryPromises)).filter(Boolean);
             setInventoryByStore(inventoryData);
-            
+
             // Calculate total inventory value across all stores
             const totalValue = inventoryData.reduce((sum, store) => sum + (store?.value || 0), 0);
             setTotalInventoryValue(totalValue);
@@ -293,7 +293,7 @@ export default function ManagerDashboard() {
                                     <select
                                         value={selectedStore}
                                         onChange={(e) => handleStoreChange(e.target.value)}
-                                        className="px-3 py-1.5 bg-surface-elevated border border-white/10 rounded-lg text-sm focus:outline-none focus:border-secondary"
+                                        className="px-3 py-1.5 !bg-[#1a1a24] !text-[#e8e8f0] border border-white/10 rounded-lg text-sm focus:outline-none focus:border-secondary"
                                     >
                                         <option value="">All Stores</option>
                                         <option value="S1">Store S1</option>
@@ -353,7 +353,7 @@ export default function ManagerDashboard() {
                                 <input
                                     type="text"
                                     placeholder="Search SKU..."
-                                    className="bg-slate-900 text-white border border-white/20 rounded-full py-1.5 pl-9 pr-4 text-xs focus:ring-1 focus:ring-secondary outline-none transition-all w-40 focus:w-56"
+                                    className="!bg-[#1a1a24] !text-[#e8e8f0] border border-white/20 rounded-full py-1.5 pl-9 pr-4 text-xs focus:ring-1 focus:ring-secondary outline-none transition-all w-40 focus:w-56"
                                 />
                             </div>
                             <button className="p-2 hover:bg-white/5 rounded-lg transition-colors relative">
@@ -487,52 +487,52 @@ export default function ManagerDashboard() {
 
                 {/* PO Creation Modal */}
                 <PurchaseOrderModal
-            showPOModal={showPOModal}
-            setShowPOModal={setShowPOModal}
-            alerts={alerts}
-            poItems={poItems}
-            setPOItems={setPOItems}
-            poNotes={poNotes}
-            setPONotes={setPONotes}
-            handleCreatePO={async () => {
-              if (poItems.length === 0) {
-                alert('Please add at least one item to the PO');
-                return;
-              }
-              const userData = localStorage.getItem('user');
-              if (!userData) return;
-              const parsedUser = JSON.parse(userData);
-              const storeId = parsedUser.store_id || selectedStore || 'S1';
-              try {
-                const res = await fetch(`${API_URL}/api/purchase-orders/`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    store_id: storeId,
-                    created_by_user_id: parsedUser.id,
-                    items: poItems,
-                    notes: poNotes || null,
-                    expected_delivery_date: null
-                  })
-                });
-                if (res.ok) {
-                  const newPO = await res.json();
-                  setPurchaseOrders([newPO, ...purchaseOrders]);
-                  setShowPOModal(false);
-                  setPOItems([]);
-                  setPONotes('');
-                  alert(`Purchase Order ${newPO.po_number} created successfully!`);
-                } else {
-                  const error = await res.json();
-                  alert(`Failed to create PO: ${error.detail || 'Unknown error'}`);
-                }
-              } catch (error) {
-                console.error('Failed to create PO:', error);
-                alert('Failed to create purchase order');
-              }
-            }}
-          />
+                    showPOModal={showPOModal}
+                    setShowPOModal={setShowPOModal}
+                    alerts={alerts}
+                    poItems={poItems}
+                    setPOItems={setPOItems}
+                    poNotes={poNotes}
+                    setPONotes={setPONotes}
+                    handleCreatePO={async () => {
+                        if (poItems.length === 0) {
+                            alert('Please add at least one item to the PO');
+                            return;
+                        }
+                        const userData = localStorage.getItem('user');
+                        if (!userData) return;
+                        const parsedUser = JSON.parse(userData);
+                        const storeId = parsedUser.store_id || selectedStore || 'S1';
+                        try {
+                            const res = await fetch(`${API_URL}/api/purchase-orders/`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    store_id: storeId,
+                                    created_by_user_id: parsedUser.id,
+                                    items: poItems,
+                                    notes: poNotes || null,
+                                    expected_delivery_date: null
+                                })
+                            });
+                            if (res.ok) {
+                                const newPO = await res.json();
+                                setPurchaseOrders([newPO, ...purchaseOrders]);
+                                setShowPOModal(false);
+                                setPOItems([]);
+                                setPONotes('');
+                                alert(`Purchase Order ${newPO.po_number} created successfully!`);
+                            } else {
+                                const error = await res.json();
+                                alert(`Failed to create PO: ${error.detail || 'Unknown error'}`);
+                            }
+                        } catch (error) {
+                            console.error('Failed to create PO:', error);
+                            alert('Failed to create purchase order');
+                        }
+                    }}
+                />
+            </div>
         </div>
-      </div>
     );
 }

@@ -70,7 +70,7 @@ export default function ProductAccuracyTable() {
                         <select
                             value={sortBy}
                             onChange={(e) => setSortBy(e.target.value as 'mae' | 'mape' | 'wape')}
-                            className="bg-surface-elevated border border-white/10 rounded px-2 py-1 text-xs"
+                            className="!bg-[#1a1a24] !text-[#e8e8f0] border border-white/10 rounded px-2 py-1 text-xs outline-none"
                         >
                             <option value="mae">Sort by MAE</option>
                             <option value="mape">Sort by MAPE</option>
@@ -79,7 +79,7 @@ export default function ProductAccuracyTable() {
                         <select
                             value={limit}
                             onChange={(e) => setLimit(Number(e.target.value))}
-                            className="bg-surface-elevated border border-white/10 rounded px-2 py-1 text-xs"
+                            className="!bg-[#1a1a24] !text-[#e8e8f0] border border-white/10 rounded px-2 py-1 text-xs outline-none"
                         >
                             <option value="5">Top 5</option>
                             <option value="10">Top 10</option>

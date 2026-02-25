@@ -122,7 +122,7 @@ export default function AnalystDashboard() {
         }
         setUser(parsed);
         setLoading(false);
-        
+
         // Fetch model metrics
         fetchModelMetrics();
     }, [router]);
@@ -239,7 +239,7 @@ export default function AnalystDashboard() {
                     'Content-Type': 'application/json',
                 },
             });
-            
+
             if (response.ok) {
                 const data = await response.json();
                 setSimulationResults(data);
@@ -260,28 +260,28 @@ export default function AnalystDashboard() {
             setNotification({ message: 'Please enter a scenario description', type: 'warning' });
             return;
         }
-        
+
         setSimulationLoading(true);
         try {
             const response = await fetch(`${API_URL}/simulations/custom?scenario_text=${encodeURIComponent(customScenario)}`, {
                 method: 'POST',
             });
-            
+
             if (response.ok) {
                 const result = await response.json();
-                
+
                 // Add AI result to the simulation results
                 setSimulationResults(prev => [
                     result,
                     ...prev.slice(0, 3)  // Keep top 3 default scenarios
                 ]);
-                
+
                 const reasoning = result.ai_reasoning ? ` (${result.ai_reasoning})` : '';
-                setNotification({ 
-                    message: `AI analysis complete: ${result.demand.toLocaleString()} units projected${reasoning}`, 
-                    type: 'success' 
+                setNotification({
+                    message: `AI analysis complete: ${result.demand.toLocaleString()} units projected${reasoning}`,
+                    type: 'success'
                 });
-                
+
                 setCustomScenario('');
                 setShowCustomInput(false);
             } else {
@@ -374,7 +374,7 @@ export default function AnalystDashboard() {
                                 <input
                                     type="text"
                                     placeholder="Search forecasts..."
-                                    className="bg-surface-elevated border border-white/10 rounded-full py-1.5 pl-9 pr-4 text-xs focus:ring-1 focus:ring-info outline-none transition-all w-40 focus:w-56"
+                                    className="!bg-[#1a1a24] !text-[#e8e8f0] border border-white/10 rounded-full py-1.5 pl-9 pr-4 text-xs focus:ring-1 focus:ring-info outline-none transition-all w-40 focus:w-56 shadow-inner"
                                 />
                             </div>
                             <button className="p-2 hover:bg-white/5 rounded-lg transition-colors relative">
@@ -419,9 +419,9 @@ export default function AnalystDashboard() {
                             Refresh Data
                         </Button>
                         <div className="relative export-menu-container">
-                            <Button 
-                                variant="primary" 
-                                size="sm" 
+                            <Button
+                                variant="primary"
+                                size="sm"
                                 onClick={() => setShowExportMenu(!showExportMenu)}
                             >
                                 <DatabaseIcon size={14} />
@@ -839,7 +839,7 @@ export default function AnalystDashboard() {
 
                 {/* LLM Assistant Floating Button */}
                 <div className="fixed bottom-6 right-6 z-40">
-                    <button 
+                    <button
                         onClick={() => setIsChatOpen(!isChatOpen)}
                         className="w-14 h-14 bg-gradient-to-r from-cyan-600 to-blue-600 rounded-full shadow-lg shadow-info/30 flex items-center justify-center hover:scale-110 transition-transform group"
                     >
@@ -854,8 +854,8 @@ export default function AnalystDashboard() {
             </div>
 
             {/* Chat Panel */}
-            <ChatPanel 
-                isOpen={isChatOpen} 
+            <ChatPanel
+                isOpen={isChatOpen}
                 onClose={() => setIsChatOpen(false)}
                 onScenarioAnalyzed={handleChatScenario}
             />
