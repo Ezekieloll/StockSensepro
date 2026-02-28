@@ -121,7 +121,7 @@ export default function DashboardPage() {
                                 <input
                                     type="text"
                                     placeholder="Quick Search..."
-                                    className="bg-surface-elevated border border-white/10 rounded-full py-1.5 pl-9 pr-4 text-xs focus:ring-1 focus:ring-primary outline-none transition-all w-48 focus:w-64"
+                                    className="!bg-[#1a1a24] !text-[#e8e8f0] border border-white/10 rounded-full py-1.5 pl-9 pr-4 text-xs focus:ring-1 focus:ring-primary outline-none transition-all w-48 focus:w-64 shadow-inner"
                                 />
                             </div>
                             <button className="p-2 hover:bg-white/5 rounded-lg transition-colors relative">

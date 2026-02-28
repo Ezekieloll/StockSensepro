@@ -304,7 +304,7 @@ export default function ForecastsPage() {
                                         setSelectedCategory(e.target.value);
                                         setSelectedProduct('');
                                     }}
-                                    className="w-full bg-surface-elevated border border-white/10 rounded-lg py-2 px-3 text-sm focus:ring-1 focus:ring-secondary outline-none"
+                                    className="w-full !bg-[#1a1a24] !text-[#e8e8f0] border border-white/10 rounded-lg py-2 px-3 text-sm focus:ring-1 focus:ring-secondary outline-none"
                                 >
                                     <option value="">All Categories</option>
                                     {categories.map(cat => (
@@ -321,7 +321,7 @@ export default function ForecastsPage() {
                                 <select
                                     value={selectedProduct}
                                     onChange={(e) => setSelectedProduct(e.target.value)}
-                                    className="w-full bg-surface-elevated border border-white/10 rounded-lg py-2 px-3 text-sm focus:ring-1 focus:ring-secondary outline-none"
+                                    className="w-full !bg-[#1a1a24] !text-[#e8e8f0] border border-white/10 rounded-lg py-2 px-3 text-sm focus:ring-1 focus:ring-secondary outline-none"
                                 >
                                     {products.map(prod => (
                                         <option key={prod.sku} value={prod.sku}>
@@ -337,7 +337,7 @@ export default function ForecastsPage() {
                                 <select
                                     value={selectedStore}
                                     onChange={(e) => setSelectedStore(e.target.value)}
-                                    className="w-full bg-surface-elevated border border-white/10 rounded-lg py-2 px-3 text-sm focus:ring-1 focus:ring-secondary outline-none"
+                                    className="w-full !bg-[#1a1a24] !text-[#e8e8f0] border border-white/10 rounded-lg py-2 px-3 text-sm focus:ring-1 focus:ring-secondary outline-none"
                                 >
                                     <option value="S1">Store S1</option>
                                     <option value="S2">Store S2</option>
@@ -351,7 +351,7 @@ export default function ForecastsPage() {
                                 <select
                                     value={historyDays}
                                     onChange={(e) => setHistoryDays(Number(e.target.value))}
-                                    className="w-full bg-surface-elevated border border-white/10 rounded-lg py-2 px-3 text-sm focus:ring-1 focus:ring-secondary outline-none"
+                                    className="w-full !bg-[#1a1a24] !text-[#e8e8f0] border border-white/10 rounded-lg py-2 px-3 text-sm focus:ring-1 focus:ring-secondary outline-none"
                                 >
                                     <option value={7}>7 days</option>
                                     <option value={14}>14 days</option>
@@ -367,7 +367,7 @@ export default function ForecastsPage() {
                                 <select
                                     value={forecastDays}
                                     onChange={(e) => setForecastDays(Number(e.target.value))}
-                                    className="w-full bg-surface-elevated border border-white/10 rounded-lg py-2 px-3 text-sm focus:ring-1 focus:ring-secondary outline-none"
+                                    className="w-full !bg-[#1a1a24] !text-[#e8e8f0] border border-white/10 rounded-lg py-2 px-3 text-sm focus:ring-1 focus:ring-secondary outline-none"
                                 >
                                     <option value={7}>7 days</option>
                                     <option value={14}>14 days</option>
