@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 import subprocess
 import sys
+import os
 from pathlib import Path
 from typing import List
 
@@ -139,25 +140,34 @@ def trigger_adversarial_test():
                 detail=f"ML directory not found at {ml_dir}"
             )
         
+        # Set environment to handle UTF-8 output (emojis)
+        env = os.environ.copy()
+        env["PYTHONIOENCODING"] = "utf-8"
+        
         # Run the adversarial populate_db.py script
         result = subprocess.run(
-            ["python", "-m", "adversarial.populate_db"],
+            [sys.executable, "-m", "adversarial.populate_db"],
             cwd=ml_dir,
             capture_output=True,
             text=True,
+            env=env,
             timeout=300  # 5 minute timeout
         )
         
         if result.returncode != 0:
             raise HTTPException(
                 status_code=500,
-                detail=f"Script failed: {result.stderr}"
+                detail=f"Script failed: {result.stderr or 'Unknown error'}"
             )
+        
+        # Handle stdout safely (could be None)
+        stdout = result.stdout or ""
+        output_text = stdout[-500:] if len(stdout) > 500 else stdout
         
         return {
             "status": "success",
             "message": "Adversarial testing completed successfully",
-            "output": result.stdout[-500:] if len(result.stdout) > 500 else result.stdout  # Last 500 chars
+            "output": output_text
         }
         
     except subprocess.TimeoutExpired:
@@ -165,8 +175,13 @@ def trigger_adversarial_test():
             status_code=500,
             detail="Adversarial test timed out after 5 minutes"
         )
+    except HTTPException:
+        raise  # Re-raise HTTPExceptions as-is
     except Exception as e:
+        # Include more error details
+        import traceback
+        error_detail = f"Failed to run adversarial test: {str(e)}\n{traceback.format_exc()}"
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to run adversarial test: {str(e)}"
+            detail=error_detail
         )

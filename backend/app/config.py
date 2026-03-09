@@ -8,4 +8,5 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
     raise RuntimeError("DATABASE_URL is not set")
 
-print("🔥 DATABASE_URL =", DATABASE_URL)
+# Print without emoji for Windows compatibility
+print("DATABASE_URL =", DATABASE_URL)

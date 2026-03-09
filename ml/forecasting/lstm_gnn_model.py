@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 
 from forecasting.lstm_model import LSTMBaseline
-from gnn.gnn_model import GNNInfluence
+from gnn.gnn_model_v2 import GNNInfluenceV2
 
 
 class LSTMGNNModel(nn.Module):
@@ -21,7 +21,7 @@ class LSTMGNNModel(nn.Module):
         )
 
         # GNN influence module (across SKUs)
-        self.gnn = GNNInfluence(embed_dim=hidden_size)
+        self.gnn = GNNInfluenceV2(embed_dim=hidden_size)
 
         # Final prediction head
         self.fc_out = nn.Linear(hidden_size, 1)

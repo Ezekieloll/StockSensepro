@@ -104,10 +104,28 @@ def get_model_metrics():
                 "epochs": 50
             })
     
-    # Add historical/alternative models (these would come from saved results)
-    # For now, we'll include some baseline models with estimated metrics
-    models.extend([
-        {
+    # LSTM v2 — read from trained results if available, else fallback
+    lstm_results_file = MODELS_DIR / "lstm_v2_final_results.json"
+    if lstm_results_file.exists():
+        try:
+            with open(lstm_results_file, 'r') as f:
+                lstm_data = json.load(f)
+                fm = lstm_data.get("final_metrics", {})
+                models.append({
+                    "model": "LSTM v1.8",
+                    "type": "Long Short-Term Memory",
+                    "mae": round(fm.get("mae", 5.67), 2),
+                    "mape": round(fm.get("mape", 11.2), 2),
+                    "wape": round(fm.get("wape", 9.8), 2),
+                    "status": "standby",
+                    "trained_at": "2026-01-15T14:20:00",
+                    "epochs": lstm_data.get("best_epoch", 40),
+                    "forecast_accuracy": round(fm.get("forecast_accuracy", 88.8), 2)
+                })
+        except Exception as e:
+            print(f"Error reading LSTM results: {e}")
+    else:
+        models.append({
             "model": "LSTM v1.8",
             "type": "Long Short-Term Memory",
             "mae": 5.67,
@@ -116,8 +134,30 @@ def get_model_metrics():
             "status": "standby",
             "trained_at": "2026-01-15T14:20:00",
             "epochs": 40
-        },
-        {
+        })
+
+    # LSTM+GNN v2 — read from trained results if available, else fallback
+    lstm_gnn_results_file = MODELS_DIR / "lstm_gnn_v2_final_results.json"
+    if lstm_gnn_results_file.exists():
+        try:
+            with open(lstm_gnn_results_file, 'r') as f:
+                lstm_gnn_data = json.load(f)
+                fm = lstm_gnn_data.get("final_metrics", {})
+                models.append({
+                    "model": "LSTM+GNN v1.2",
+                    "type": "LSTM with Graph Neural Network",
+                    "mae": round(fm.get("mae", 4.89), 2),
+                    "mape": round(fm.get("mape", 9.8), 2),
+                    "wape": round(fm.get("wape", 8.4), 2),
+                    "status": "standby",
+                    "trained_at": "2026-01-10T09:15:00",
+                    "epochs": lstm_gnn_data.get("best_epoch", 45),
+                    "forecast_accuracy": round(fm.get("forecast_accuracy", 90.2), 2)
+                })
+        except Exception as e:
+            print(f"Error reading LSTM+GNN results: {e}")
+    else:
+        models.append({
             "model": "LSTM+GNN v1.2",
             "type": "LSTM with Graph Neural Network",
             "mae": 4.89,
@@ -126,8 +166,30 @@ def get_model_metrics():
             "status": "standby",
             "trained_at": "2026-01-10T09:15:00",
             "epochs": 45
-        },
-        {
+        })
+
+    # Transformer v2 — read from trained results if available, else fallback
+    transformer_results_file = MODELS_DIR / "transformer_v2_final_results.json"
+    if transformer_results_file.exists():
+        try:
+            with open(transformer_results_file, 'r') as f:
+                transformer_data = json.load(f)
+                fm = transformer_data.get("final_metrics", {})
+                models.append({
+                    "model": "Transformer v1.0",
+                    "type": "Vanilla Transformer",
+                    "mae": round(fm.get("mae", 6.12), 2),
+                    "mape": round(fm.get("mape", 12.5), 2),
+                    "wape": round(fm.get("wape", 10.2), 2),
+                    "status": "archived",
+                    "trained_at": "2025-12-28T16:45:00",
+                    "epochs": transformer_data.get("best_epoch", 30),
+                    "forecast_accuracy": round(fm.get("forecast_accuracy", 87.5), 2)
+                })
+        except Exception as e:
+            print(f"Error reading Transformer results: {e}")
+    else:
+        models.append({
             "model": "Transformer v1.0",
             "type": "Vanilla Transformer",
             "mae": 6.12,
@@ -136,8 +198,7 @@ def get_model_metrics():
             "status": "archived",
             "trained_at": "2025-12-28T16:45:00",
             "epochs": 30
-        }
-    ])
+        })
     
     return {
         "models": models,
