@@ -107,6 +107,11 @@ export default function ManagerDashboard() {
     const [totalInventoryValue, setTotalInventoryValue] = useState<number>(0);
     const [userStore, setUserStore] = useState<string | null>(null);
 
+    const getAuthHeaders = (): HeadersInit => {
+        const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+        return token ? { Authorization: `Bearer ${token}` } : {};
+    };
+
     useEffect(() => {
         const userData = localStorage.getItem('user');
         if (!userData) {
@@ -150,22 +155,30 @@ export default function ManagerDashboard() {
 
             console.log('🔒 Fetching data for store:', effectiveStore, 'User assigned:', userAssignedStore);
 
+            const authHeaders = getAuthHeaders();
+
             // Fetch forecasts by product
-            const forecastRes = await fetch(`${API_URL}/forecast/by-product${storeParam}`);
+            const forecastRes = await fetch(`${API_URL}/forecast/by-product${storeParam}`, {
+                headers: authHeaders,
+            });
             if (forecastRes.ok) {
                 const forecastData = await forecastRes.json();
                 setForecasts(forecastData);
             }
 
             // Fetch alerts
-            const alertsRes = await fetch(`${API_URL}/forecast/alerts${storeParam}`);
+            const alertsRes = await fetch(`${API_URL}/forecast/alerts${storeParam}`, {
+                headers: authHeaders,
+            });
             if (alertsRes.ok) {
                 const alertsData = await alertsRes.json();
                 setAlerts(alertsData);
             }
 
             // Fetch summary
-            const summaryRes = await fetch(`${API_URL}/forecast/summary${storeParam}`);
+            const summaryRes = await fetch(`${API_URL}/forecast/summary${storeParam}`, {
+                headers: authHeaders,
+            });
             if (summaryRes.ok) {
                 const summaryData = await summaryRes.json();
                 setSummary(summaryData);
@@ -176,7 +189,9 @@ export default function ManagerDashboard() {
                 const userStore = parsedUser.store_id;
                 const poStoreId = userStore || forcedStoreId;
                 if (poStoreId) {
-                    const poRes = await fetch(`${API_URL}/api/purchase-orders/?store_id=${poStoreId}`);
+                    const poRes = await fetch(`${API_URL}/api/purchase-orders/?store_id=${poStoreId}`, {
+                        headers: authHeaders,
+                    });
                     if (poRes.ok) {
                         const poData = await poRes.json();
                         setPurchaseOrders(poData);
@@ -187,12 +202,16 @@ export default function ManagerDashboard() {
             // Fetch inventory values - only user's store if assigned, otherwise all or selected
             const stores = userAssignedStore ? [userAssignedStore] : (forcedStoreId ? [forcedStoreId] : ['S1', 'S2', 'S3']);
             const inventoryPromises = stores.map(async (store) => {
-                const invRes = await fetch(`${API_URL}/forecast/inventory-value?store_id=${store}`);
+                const invRes = await fetch(`${API_URL}/forecast/inventory-value?store_id=${store}`, {
+                    headers: authHeaders,
+                });
                 if (invRes.ok) {
                     const invData = await invRes.json();
 
                     // Get store-specific forecast summary for stock status
-                    const storeAlerts = await fetch(`${API_URL}/forecast/alerts?store_id=${store}`);
+                    const storeAlerts = await fetch(`${API_URL}/forecast/alerts?store_id=${store}`, {
+                        headers: authHeaders,
+                    });
                     let lowCount = 0, criticalCount = 0;
                     if (storeAlerts.ok) {
                         const alertsData = await storeAlerts.json();
@@ -506,7 +525,10 @@ export default function ManagerDashboard() {
                         try {
                             const res = await fetch(`${API_URL}/api/purchase-orders/`, {
                                 method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    ...getAuthHeaders(),
+                                },
                                 body: JSON.stringify({
                                     store_id: storeId,
                                     created_by_user_id: parsedUser.id,

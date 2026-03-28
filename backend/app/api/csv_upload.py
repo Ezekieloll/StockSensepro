@@ -9,7 +9,7 @@ import json
 from datetime import datetime
 from typing import List, Optional
 
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
@@ -17,9 +17,13 @@ from app.database import get_db
 from app.models.staging import StagingUpload, StagingTransaction
 from app.models.transaction import Transaction, DailyDemand
 from app.models.user import User
+from app.services.auth_utils import require_admin
+from app.services.audit_utils import write_audit_log
 
 
 router = APIRouter(prefix="/csv-upload", tags=["CSV Upload"])
+
+MAX_CSV_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 
 
 # Expected CSV columns (matching import_transactions.py)
@@ -57,20 +61,32 @@ def validate_csv_row(row: dict, row_num: int) -> tuple[bool, Optional[str]]:
 @router.post("/upload")
 async def upload_csv(
     file: UploadFile = File(...),
-    uploaded_by: str = "admin@stocksense.com",  # TODO: Get from auth session
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    admin_user: dict = Depends(require_admin),
+    request: Request = None,
 ):
     """
     Upload CSV file to staging area for validation.
     Creates StagingUpload and StagingTransaction records.
     """
     # Validate file type
-    if not file.filename.endswith('.csv'):
+    if not file.filename or not file.filename.endswith('.csv'):
         raise HTTPException(status_code=400, detail="File must be a CSV")
+
+    allowed_content_types = {"text/csv", "application/csv", "application/vnd.ms-excel"}
+    if file.content_type and file.content_type not in allowed_content_types:
+        raise HTTPException(status_code=400, detail="Unsupported content type for CSV upload")
     
     # Read CSV content
     content = await file.read()
-    decoded = content.decode('utf-8')
+    if len(content) > MAX_CSV_FILE_SIZE:
+        raise HTTPException(status_code=413, detail="CSV file too large (max 10 MB)")
+
+    try:
+        decoded = content.decode('utf-8')
+    except UnicodeDecodeError as exc:
+        raise HTTPException(status_code=400, detail="CSV must be UTF-8 encoded") from exc
+
     csv_reader = csv.DictReader(io.StringIO(decoded))
     
     # Normalize column names (lowercase, strip spaces)
@@ -87,7 +103,7 @@ async def upload_csv(
     # Create staging upload record
     staging_upload = StagingUpload(
         filename=file.filename,
-        uploaded_by=uploaded_by,
+        uploaded_by=admin_user.get("sub", "admin"),
         status='pending'
     )
     db.add(staging_upload)
@@ -172,6 +188,16 @@ async def upload_csv(
     
     db.commit()
     db.refresh(staging_upload)
+
+    write_audit_log(
+        db,
+        action="CSV_UPLOADED",
+        user_id=int(admin_user.get("sub")) if admin_user.get("sub") else None,
+        entity=f"staging_upload:{staging_upload.id}",
+        details={"filename": staging_upload.filename, "row_count": row_count},
+        ip_address=request.client.host if request and request.client else None,
+    )
+    db.commit()
     
     return {
         "upload_id": staging_upload.id,
@@ -249,7 +275,12 @@ async def preview_staging_data(upload_id: int, limit: int = 20, db: Session = De
 
 
 @router.post("/staging/{upload_id}/approve")
-async def approve_staging_upload(upload_id: int, db: Session = Depends(get_db)):
+async def approve_staging_upload(
+    upload_id: int,
+    db: Session = Depends(get_db),
+    admin_user: dict = Depends(require_admin),
+    request: Request = None,
+):
     """
     Approve staged upload and transfer to master DB.
     Inserts into transactions and aggregates to daily_demand.
@@ -325,14 +356,15 @@ async def approve_staging_upload(upload_id: int, db: Session = Depends(get_db)):
         
         if existing:
             # Update existing demand
-            existing.demand += agg.total_quantity
+            existing.total_quantity += agg.total_quantity
         else:
             # Create new demand entry
             daily_demand = DailyDemand(
                 date=agg.date,
                 store_id=agg.store_id,
                 product_id=agg.product_id,
-                demand=agg.total_quantity
+                total_quantity=agg.total_quantity,
+                transaction_count=1
             )
             db.add(daily_demand)
     
@@ -340,6 +372,16 @@ async def approve_staging_upload(upload_id: int, db: Session = Depends(get_db)):
     upload.status = 'approved'
     upload.processed_at = datetime.now()
     
+    db.commit()
+
+    write_audit_log(
+        db,
+        action="CSV_UPLOAD_APPROVED",
+        user_id=int(admin_user.get("sub")) if admin_user.get("sub") else None,
+        entity=f"staging_upload:{upload_id}",
+        details={"rows_imported": len(staging_txs)},
+        ip_address=request.client.host if request and request.client else None,
+    )
     db.commit()
     
     return {
@@ -351,7 +393,12 @@ async def approve_staging_upload(upload_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/staging/{upload_id}/reject")
-async def reject_staging_upload(upload_id: int, db: Session = Depends(get_db)):
+async def reject_staging_upload(
+    upload_id: int,
+    db: Session = Depends(get_db),
+    admin_user: dict = Depends(require_admin),
+    request: Request = None,
+):
     """
     Reject and delete staged upload.
     """
@@ -359,6 +406,15 @@ async def reject_staging_upload(upload_id: int, db: Session = Depends(get_db)):
     if not upload:
         raise HTTPException(status_code=404, detail="Upload not found")
     
+    write_audit_log(
+        db,
+        action="CSV_UPLOAD_REJECTED",
+        user_id=int(admin_user.get("sub")) if admin_user.get("sub") else None,
+        entity=f"staging_upload:{upload_id}",
+        details={"filename": upload.filename},
+        ip_address=request.client.host if request and request.client else None,
+    )
+
     upload.status = 'rejected'
     upload.processed_at = datetime.now()
     

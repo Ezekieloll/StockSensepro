@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 import subprocess
 import sys
@@ -8,7 +8,9 @@ from typing import List
 
 from app.database import get_db
 from app.models.adversarial_risk import AdversarialRisk
-from app.api.schemas.adversarial import ScenarioInfo, RunAITestRequest, AITestResponse
+from app.api.schemas.adversarial import ScenarioInfo, RunAITestRequest, AITestResponse, ScenarioActivityRequest
+from app.services.auth_utils import get_current_user
+from app.services.audit_utils import write_audit_log
 
 router = APIRouter(prefix="/adversarial", tags=["Adversarial"])
 
@@ -19,7 +21,10 @@ if str(ml_dir) not in sys.path:
 
 
 @router.get("/scenarios", response_model=List[ScenarioInfo])
-def get_available_scenarios(use_ai: bool = False, db: Session = Depends(get_db)):
+def get_available_scenarios(
+    use_ai: bool = False,
+    db: Session = Depends(get_db),
+):
     """
     Get all available adversarial scenarios.
     
@@ -30,12 +35,34 @@ def get_available_scenarios(use_ai: bool = False, db: Session = Depends(get_db))
     """
     try:
         if use_ai:
-            # Use AI to generate scenarios based on actual data
-            from adversarial.dynamic_ai_scenarios import generate_ai_scenarios
-            
-            ai_scenarios = generate_ai_scenarios(db=db)
-            
-            return [ScenarioInfo(**scenario) for scenario in ai_scenarios]
+            # Use AI to generate scenarios based on actual data.
+            # If AI output is malformed or unavailable, degrade gracefully to standard scenarios.
+            try:
+                from adversarial.dynamic_ai_scenarios import generate_ai_scenarios
+                ai_scenarios = generate_ai_scenarios(db=db)
+                return [ScenarioInfo(**scenario) for scenario in ai_scenarios]
+            except Exception as ai_error:
+                print(f"⚠️ AI scenario generation failed, falling back to standard scenarios: {ai_error}")
+
+                from adversarial.ai_scenario_generator import AIScenarioGenerator
+
+                generator = AIScenarioGenerator()
+                scenarios = []
+
+                for scenario in generator.scenarios_library:
+                    scenarios.append(ScenarioInfo(
+                        id=scenario.id,
+                        name=scenario.name,
+                        description=scenario.description,
+                        demand_multiplier=scenario.demand_multiplier,
+                        duration_days=scenario.duration_days,
+                        affected_categories=scenario.affected_categories,
+                        probability=scenario.probability,
+                        strategies=scenario.strategies,
+                        priority_level=scenario.priority_level
+                    ))
+
+                return scenarios
         else:
             # Use hardcoded scenarios
             from adversarial.ai_scenario_generator import AIScenarioGenerator
@@ -67,8 +94,10 @@ def get_available_scenarios(use_ai: bool = False, db: Session = Depends(get_db))
 
 @router.post("/run-ai-test", response_model=AITestResponse)
 def run_ai_adversarial_test(
-    request: RunAITestRequest,
-    db: Session = Depends(get_db)
+    run_request: RunAITestRequest,
+    db: Session = Depends(get_db),
+    user: dict = Depends(get_current_user),
+    request: Request = None,
 ):
     """
     Run AI-powered adversarial testing with intelligent scenarios.
@@ -82,17 +111,80 @@ def run_ai_adversarial_test(
         
         # Run AI testing
         results = run_ai_adversarial_testing(
-            selected_scenarios=request.scenario_ids,
+            selected_scenarios=run_request.scenario_ids,
+            category_scoped=run_request.category_scoped,
+            custom_scenarios=[
+                item.model_dump() if hasattr(item, "model_dump") else item.dict()
+                for item in (run_request.custom_scenarios or [])
+            ],
             db=db
         )
+
+        write_audit_log(
+            db,
+            action="AI_ADVERSARIAL_TEST_COMPLETED",
+            user_id=int(user.get("sub")) if user.get("sub") else None,
+            entity="adversarial_test:run-ai-test",
+            details={
+                "status": "success",
+                "scenarios_tested": results.get("scenarios_tested"),
+                "scope_mode": results.get("scope_mode"),
+            },
+            ip_address=request.client.host if request and request.client else None,
+        )
+        db.commit()
         
         return AITestResponse(**results)
     
     except Exception as e:
+        write_audit_log(
+            db,
+            action="AI_ADVERSARIAL_TEST_FAILED",
+            user_id=int(user.get("sub")) if user.get("sub") else None,
+            entity="adversarial_test:run-ai-test",
+            details={"error": str(e)},
+            ip_address=request.client.host if request and request.client else None,
+        )
+        db.commit()
         raise HTTPException(
             status_code=500,
             detail=f"AI adversarial testing failed: {str(e)}"
         )
+
+
+@router.post("/scenario-activity")
+def log_scenario_activity(
+    payload: ScenarioActivityRequest,
+    db: Session = Depends(get_db),
+    user: dict = Depends(get_current_user),
+    request: Request = None,
+):
+    """Persist custom scenario add/edit/delete actions for recent activity timeline."""
+    action_map = {
+        "created": "CUSTOM_SCENARIO_CREATED",
+        "updated": "CUSTOM_SCENARIO_UPDATED",
+        "deleted": "CUSTOM_SCENARIO_DELETED",
+    }
+
+    normalized_action = (payload.action or "").strip().lower()
+    if normalized_action not in action_map:
+        raise HTTPException(status_code=400, detail="Invalid scenario activity action")
+
+    write_audit_log(
+        db,
+        action=action_map[normalized_action],
+        user_id=int(user.get("sub")) if user.get("sub") else None,
+        entity=f"scenario:{payload.scenario_id}",
+        details={
+            "scenario_id": payload.scenario_id,
+            "scenario_name": payload.scenario_name,
+            **(payload.details or {}),
+        },
+        ip_address=request.client.host if request and request.client else None,
+    )
+    db.commit()
+
+    return {"status": "success"}
 
 @router.get("/")
 def get_adversarial_risk(
@@ -124,7 +216,11 @@ def get_adversarial_risk(
 
 
 @router.post("/run-test")
-def trigger_adversarial_test():
+def trigger_adversarial_test(
+    db: Session = Depends(get_db),
+    user: dict = Depends(get_current_user),
+    request: Request = None,
+):
     """
     Trigger adversarial testing script to recalculate risk scores.
     Runs the populate_db.py script in the ml/adversarial directory.
@@ -155,6 +251,15 @@ def trigger_adversarial_test():
         )
         
         if result.returncode != 0:
+            write_audit_log(
+                db,
+                action="ADVERSARIAL_TEST_FAILED",
+                user_id=int(user.get("sub")) if user.get("sub") else None,
+                entity="adversarial_test:run-test",
+                details={"error": result.stderr or "Unknown error"},
+                ip_address=request.client.host if request and request.client else None,
+            )
+            db.commit()
             raise HTTPException(
                 status_code=500,
                 detail=f"Script failed: {result.stderr or 'Unknown error'}"
@@ -163,6 +268,16 @@ def trigger_adversarial_test():
         # Handle stdout safely (could be None)
         stdout = result.stdout or ""
         output_text = stdout[-500:] if len(stdout) > 500 else stdout
+
+        write_audit_log(
+            db,
+            action="ADVERSARIAL_TEST_COMPLETED",
+            user_id=int(user.get("sub")) if user.get("sub") else None,
+            entity="adversarial_test:run-test",
+            details={"status": "success"},
+            ip_address=request.client.host if request and request.client else None,
+        )
+        db.commit()
         
         return {
             "status": "success",
@@ -171,6 +286,15 @@ def trigger_adversarial_test():
         }
         
     except subprocess.TimeoutExpired:
+        write_audit_log(
+            db,
+            action="ADVERSARIAL_TEST_TIMEOUT",
+            user_id=int(user.get("sub")) if user.get("sub") else None,
+            entity="adversarial_test:run-test",
+            details={"error": "timed out after 5 minutes"},
+            ip_address=request.client.host if request and request.client else None,
+        )
+        db.commit()
         raise HTTPException(
             status_code=500,
             detail="Adversarial test timed out after 5 minutes"

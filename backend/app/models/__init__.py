@@ -6,3 +6,4 @@ from app.models.user import User
 from app.models.transaction import Transaction, DailyDemand
 from app.models.purchase_order import PurchaseOrder, PurchaseOrderItem
 from app.models.staging import StagingUpload, StagingTransaction
+from app.models.audit_log import AuditLog

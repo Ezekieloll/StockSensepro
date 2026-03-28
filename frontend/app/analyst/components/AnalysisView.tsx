@@ -133,11 +133,18 @@ export default function AnalysisView() {
     // --- Visualization State ---
     const [chartType, setChartType] = useState<'line' | 'bar' | 'area'>('line');
 
+    const getAuthHeaders = (): HeadersInit => {
+        const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+        return token ? { Authorization: `Bearer ${token}` } : {};
+    };
+
     // Fetch Products
     useEffect(() => {
         const fetchProducts = async () => {
             try {
-                const res = await fetch(`${API_URL}/forecast/products`);
+                const res = await fetch(`${API_URL}/forecast/products`, {
+                    headers: getAuthHeaders(),
+                });
                 if (res.ok) {
                     const data = await res.json();
                     // map to simple product

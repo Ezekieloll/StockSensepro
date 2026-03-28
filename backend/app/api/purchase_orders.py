@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import List, Optional
@@ -10,6 +10,8 @@ from app.models.purchase_order import PurchaseOrder, PurchaseOrderItem, POStatus
 from app.models.user import User
 from app.models.transaction import Transaction
 from app.models.inventory import Inventory
+from app.services.auth_utils import get_current_user
+from app.services.audit_utils import write_audit_log
 
 router = APIRouter(prefix="/api/purchase-orders", tags=["purchase-orders"])
 
@@ -42,7 +44,6 @@ class PurchaseOrderCreate(BaseModel):
     items: List[PurchaseOrderItemCreate]
     expected_delivery_date: Optional[date] = None
     notes: Optional[str] = None
-    created_by_user_id: int  # In real app, get from auth token
 
 
 class PurchaseOrderResponse(BaseModel):
@@ -108,10 +109,14 @@ def list_purchase_orders(
     store_id: Optional[str] = None,
     status: Optional[str] = None,
     limit: int = 100,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    user: dict = Depends(get_current_user),
 ):
     """List all purchase orders with optional filters"""
     query = db.query(PurchaseOrder)
+
+    if user.get("role") == "manager" and user.get("store_id"):
+        store_id = user["store_id"]
     
     if store_id:
         query = query.filter(PurchaseOrder.store_id == store_id)
@@ -135,8 +140,16 @@ def get_purchase_order(po_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/", response_model=PurchaseOrderResponse, status_code=status.HTTP_201_CREATED)
-def create_purchase_order(po_data: PurchaseOrderCreate, db: Session = Depends(get_db)):
+def create_purchase_order(
+    po_data: PurchaseOrderCreate,
+    db: Session = Depends(get_db),
+    user: dict = Depends(get_current_user),
+    request: Request = None,
+):
     """Create new purchase order"""
+
+    if user.get("role") == "manager" and user.get("store_id"):
+        po_data = po_data.model_copy(update={"store_id": user["store_id"]})
     
     # Generate PO number
     po_number = generate_po_number(db)
@@ -160,7 +173,7 @@ def create_purchase_order(po_data: PurchaseOrderCreate, db: Session = Depends(ge
         total_quantity=total_quantity,
         total_amount=total_amount if total_amount > 0 else None,
         status=POStatus.pending,
-        created_by_user_id=po_data.created_by_user_id,
+        created_by_user_id=int(user["sub"]),
         expected_delivery_date=po_data.expected_delivery_date,
         notes=po_data.notes
     )
@@ -188,6 +201,16 @@ def create_purchase_order(po_data: PurchaseOrderCreate, db: Session = Depends(ge
     
     db.commit()
     db.refresh(new_po)
+
+    write_audit_log(
+        db,
+        action="PO_CREATED",
+        user_id=int(user.get("sub")) if user.get("sub") else None,
+        entity=f"purchase_order:{new_po.id}",
+        details={"store_id": new_po.store_id, "total_items": new_po.total_items},
+        ip_address=request.client.host if request and request.client else None,
+    )
+    db.commit()
     
     return new_po
 
@@ -196,7 +219,9 @@ def create_purchase_order(po_data: PurchaseOrderCreate, db: Session = Depends(ge
 def update_po_status(
     po_id: int, 
     status_update: PurchaseOrderStatusUpdate, 
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    user: dict = Depends(get_current_user),
+    request: Request = None,
 ):
     """Update PO status (pending → approved → in_transit → delivered)"""
     
@@ -219,6 +244,16 @@ def update_po_status(
     
     db.commit()
     db.refresh(po)
+
+    write_audit_log(
+        db,
+        action="PO_STATUS_UPDATED",
+        user_id=int(user.get("sub")) if user.get("sub") else None,
+        entity=f"purchase_order:{po.id}",
+        details={"status": status_update.status},
+        ip_address=request.client.host if request and request.client else None,
+    )
+    db.commit()
     
     return po
 
@@ -227,7 +262,9 @@ def update_po_status(
 def mark_po_delivered(
     po_id: int,
     delivery: DeliveryRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    user: dict = Depends(get_current_user),
+    request: Request = None,
 ):
     """Mark PO as delivered and create restock_receipt transactions"""
     
@@ -297,12 +334,27 @@ def mark_po_delivered(
     
     db.commit()
     db.refresh(po)
+
+    write_audit_log(
+        db,
+        action="PO_DELIVERED",
+        user_id=int(user.get("sub")) if user.get("sub") else None,
+        entity=f"purchase_order:{po.id}",
+        details={"actual_delivery_date": delivery.actual_delivery_date.isoformat()},
+        ip_address=request.client.host if request and request.client else None,
+    )
+    db.commit()
     
     return po
 
 
 @router.delete("/{po_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_purchase_order(po_id: int, db: Session = Depends(get_db)):
+def delete_purchase_order(
+    po_id: int,
+    db: Session = Depends(get_db),
+    user: dict = Depends(get_current_user),
+    request: Request = None,
+):
     """Delete PO (only if status is draft or pending)"""
     
     po = db.query(PurchaseOrder).filter(PurchaseOrder.id == po_id).first()
@@ -316,6 +368,15 @@ def delete_purchase_order(po_id: int, db: Session = Depends(get_db)):
             detail="Cannot delete PO that is already approved or delivered"
         )
     
+    write_audit_log(
+        db,
+        action="PO_DELETED",
+        user_id=int(user.get("sub")) if user.get("sub") else None,
+        entity=f"purchase_order:{po.id}",
+        details={"status": po.status.value},
+        ip_address=request.client.host if request and request.client else None,
+    )
+
     db.delete(po)
     db.commit()
     
