@@ -23,6 +23,7 @@ import ForecastsTable from './components/ForecastsTable';
 import PurchaseOrders from './components/PurchaseOrders';
 import InventoryByStore from './components/InventoryByStore';
 import PurchaseOrderModal from './components/PurchaseOrderModal';
+import RebalancingWorkflowModal from './components/RebalancingWorkflowModal';
 
 interface User {
     id?: number;
@@ -101,11 +102,17 @@ export default function ManagerDashboard() {
     const [showPOModal, setShowPOModal] = useState(false);
     const [poItems, setPOItems] = useState<PurchaseOrderItemCreate[]>([]);
     const [poNotes, setPONotes] = useState('');
+    const [showRebalancingModal, setShowRebalancingModal] = useState(false);
 
     // Inventory data state
     const [inventoryByStore, setInventoryByStore] = useState<any[]>([]);
     const [totalInventoryValue, setTotalInventoryValue] = useState<number>(0);
     const [userStore, setUserStore] = useState<string | null>(null);
+
+    const getAuthHeaders = (): HeadersInit => {
+        const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+        return token ? { Authorization: `Bearer ${token}` } : {};
+    };
 
     useEffect(() => {
         const userData = localStorage.getItem('user');
@@ -125,7 +132,7 @@ export default function ManagerDashboard() {
         setUser(parsed);
         const assignedStore = parsed.store_id || null;
         setUserStore(assignedStore);
-        
+
         // Set selectedStore to user's assigned store if they have one
         if (assignedStore) {
             setSelectedStore(assignedStore);
@@ -143,29 +150,37 @@ export default function ManagerDashboard() {
             const userData = localStorage.getItem('user');
             const parsedUser = userData ? JSON.parse(userData) : null;
             const userAssignedStore = parsedUser?.store_id;
-            
+
             // If user has assigned store, ONLY use that - ignore all other parameters
             const effectiveStore = userAssignedStore || forcedStoreId || selectedStore;
             const storeParam = effectiveStore ? `?store_id=${effectiveStore}` : '';
-            
+
             console.log('🔒 Fetching data for store:', effectiveStore, 'User assigned:', userAssignedStore);
 
+            const authHeaders = getAuthHeaders();
+
             // Fetch forecasts by product
-            const forecastRes = await fetch(`${API_URL}/forecast/by-product${storeParam}`);
+            const forecastRes = await fetch(`${API_URL}/forecast/by-product${storeParam}`, {
+                headers: authHeaders,
+            });
             if (forecastRes.ok) {
                 const forecastData = await forecastRes.json();
                 setForecasts(forecastData);
             }
 
             // Fetch alerts
-            const alertsRes = await fetch(`${API_URL}/forecast/alerts${storeParam}`);
+            const alertsRes = await fetch(`${API_URL}/forecast/alerts${storeParam}`, {
+                headers: authHeaders,
+            });
             if (alertsRes.ok) {
                 const alertsData = await alertsRes.json();
                 setAlerts(alertsData);
             }
 
             // Fetch summary
-            const summaryRes = await fetch(`${API_URL}/forecast/summary${storeParam}`);
+            const summaryRes = await fetch(`${API_URL}/forecast/summary${storeParam}`, {
+                headers: authHeaders,
+            });
             if (summaryRes.ok) {
                 const summaryData = await summaryRes.json();
                 setSummary(summaryData);
@@ -176,7 +191,9 @@ export default function ManagerDashboard() {
                 const userStore = parsedUser.store_id;
                 const poStoreId = userStore || forcedStoreId;
                 if (poStoreId) {
-                    const poRes = await fetch(`${API_URL}/api/purchase-orders/?store_id=${poStoreId}`);
+                    const poRes = await fetch(`${API_URL}/api/purchase-orders/?store_id=${poStoreId}`, {
+                        headers: authHeaders,
+                    });
                     if (poRes.ok) {
                         const poData = await poRes.json();
                         setPurchaseOrders(poData);
@@ -187,12 +204,16 @@ export default function ManagerDashboard() {
             // Fetch inventory values - only user's store if assigned, otherwise all or selected
             const stores = userAssignedStore ? [userAssignedStore] : (forcedStoreId ? [forcedStoreId] : ['S1', 'S2', 'S3']);
             const inventoryPromises = stores.map(async (store) => {
-                const invRes = await fetch(`${API_URL}/forecast/inventory-value?store_id=${store}`);
+                const invRes = await fetch(`${API_URL}/forecast/inventory-value?store_id=${store}`, {
+                    headers: authHeaders,
+                });
                 if (invRes.ok) {
                     const invData = await invRes.json();
-                    
+
                     // Get store-specific forecast summary for stock status
-                    const storeAlerts = await fetch(`${API_URL}/forecast/alerts?store_id=${store}`);
+                    const storeAlerts = await fetch(`${API_URL}/forecast/alerts?store_id=${store}`, {
+                        headers: authHeaders,
+                    });
                     let lowCount = 0, criticalCount = 0;
                     if (storeAlerts.ok) {
                         const alertsData = await storeAlerts.json();
@@ -213,7 +234,7 @@ export default function ManagerDashboard() {
 
             const inventoryData = (await Promise.all(inventoryPromises)).filter(Boolean);
             setInventoryByStore(inventoryData);
-            
+
             // Calculate total inventory value across all stores
             const totalValue = inventoryData.reduce((sum, store) => sum + (store?.value || 0), 0);
             setTotalInventoryValue(totalValue);
@@ -293,7 +314,7 @@ export default function ManagerDashboard() {
                                     <select
                                         value={selectedStore}
                                         onChange={(e) => handleStoreChange(e.target.value)}
-                                        className="px-3 py-1.5 bg-surface-elevated border border-white/10 rounded-lg text-sm focus:outline-none focus:border-secondary"
+                                        className="px-3 py-1.5 !bg-[#1a1a24] !text-[#e8e8f0] border border-white/10 rounded-lg text-sm focus:outline-none focus:border-secondary"
                                     >
                                         <option value="">All Stores</option>
                                         <option value="S1">Store S1</option>
@@ -308,7 +329,7 @@ export default function ManagerDashboard() {
                                 )}
                             </div>
                             <div className="hidden md:flex items-center gap-1">
-                                {['overview', 'forecasts', 'orders', 'inventory', 'alerts'].map((tab) => (
+                                {['overview', 'forecasts'].map((tab) => (
                                     <button
                                         key={tab}
                                         onClick={() => tab === 'forecasts' ? router.push('/forecasts') : setActiveTab(tab)}
@@ -353,7 +374,7 @@ export default function ManagerDashboard() {
                                 <input
                                     type="text"
                                     placeholder="Search SKU..."
-                                    className="bg-slate-900 text-white border border-white/20 rounded-full py-1.5 pl-9 pr-4 text-xs focus:ring-1 focus:ring-secondary outline-none transition-all w-40 focus:w-56"
+                                    className="!bg-[#1a1a24] !text-[#e8e8f0] border border-white/20 rounded-full py-1.5 pl-9 pr-4 text-xs focus:ring-1 focus:ring-secondary outline-none transition-all w-40 focus:w-56"
                                 />
                             </div>
                             <button className="p-2 hover:bg-white/5 rounded-lg transition-colors relative">
@@ -478,7 +499,7 @@ export default function ManagerDashboard() {
                 {/* Bottom Section */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                     <PurchaseOrders purchaseOrders={purchaseOrders} forecastLoading={forecastLoading} getStatusBadge={getStatusBadge} setShowPOModal={setShowPOModal} />
-                    <InventoryByStore inventoryByStore={inventoryByStore} />
+                    <InventoryByStore inventoryByStore={inventoryByStore} onManage={() => setShowRebalancingModal(true)} />
                 </div>
 
                 {/* LLM Assistant */}
@@ -487,52 +508,66 @@ export default function ManagerDashboard() {
 
                 {/* PO Creation Modal */}
                 <PurchaseOrderModal
-            showPOModal={showPOModal}
-            setShowPOModal={setShowPOModal}
-            alerts={alerts}
-            poItems={poItems}
-            setPOItems={setPOItems}
-            poNotes={poNotes}
-            setPONotes={setPONotes}
-            handleCreatePO={async () => {
-              if (poItems.length === 0) {
-                alert('Please add at least one item to the PO');
-                return;
-              }
-              const userData = localStorage.getItem('user');
-              if (!userData) return;
-              const parsedUser = JSON.parse(userData);
-              const storeId = parsedUser.store_id || selectedStore || 'S1';
-              try {
-                const res = await fetch(`${API_URL}/api/purchase-orders/`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    store_id: storeId,
-                    created_by_user_id: parsedUser.id,
-                    items: poItems,
-                    notes: poNotes || null,
-                    expected_delivery_date: null
-                  })
-                });
-                if (res.ok) {
-                  const newPO = await res.json();
-                  setPurchaseOrders([newPO, ...purchaseOrders]);
-                  setShowPOModal(false);
-                  setPOItems([]);
-                  setPONotes('');
-                  alert(`Purchase Order ${newPO.po_number} created successfully!`);
-                } else {
-                  const error = await res.json();
-                  alert(`Failed to create PO: ${error.detail || 'Unknown error'}`);
-                }
-              } catch (error) {
-                console.error('Failed to create PO:', error);
-                alert('Failed to create purchase order');
-              }
-            }}
-          />
+                    showPOModal={showPOModal}
+                    setShowPOModal={setShowPOModal}
+                    alerts={alerts}
+                    poItems={poItems}
+                    setPOItems={setPOItems}
+                    poNotes={poNotes}
+                    setPONotes={setPONotes}
+                    handleCreatePO={async () => {
+                        if (poItems.length === 0) {
+                            alert('Please add at least one item to the PO');
+                            return;
+                        }
+                        const userData = localStorage.getItem('user');
+                        if (!userData) return;
+                        const parsedUser = JSON.parse(userData);
+                        const storeId = parsedUser.store_id || selectedStore || 'S1';
+                        try {
+                            const res = await fetch(`${API_URL}/api/purchase-orders/`, {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    ...getAuthHeaders(),
+                                },
+                                body: JSON.stringify({
+                                    store_id: storeId,
+                                    created_by_user_id: parsedUser.id,
+                                    items: poItems,
+                                    notes: poNotes || null,
+                                    expected_delivery_date: null
+                                })
+                            });
+                            if (res.ok) {
+                                const newPO = await res.json();
+                                setPurchaseOrders([newPO, ...purchaseOrders]);
+                                setShowPOModal(false);
+                                setPOItems([]);
+                                setPONotes('');
+                                alert(`Purchase Order ${newPO.po_number} created successfully!`);
+                            } else {
+                                const error = await res.json();
+                                alert(`Failed to create PO: ${error.detail || 'Unknown error'}`);
+                            }
+                        } catch (error) {
+                            console.error('Failed to create PO:', error);
+                            alert('Failed to create purchase order');
+                        }
+                    }}
+                />
+
+                <RebalancingWorkflowModal
+                    showModal={showRebalancingModal}
+                    setShowModal={setShowRebalancingModal}
+                    inventoryByStore={inventoryByStore}
+                    userStore={userStore}
+                    selectedStore={selectedStore}
+                    apiUrl={API_URL}
+                    getAuthHeaders={getAuthHeaders}
+                    onPlanCreated={() => fetchForecastData(selectedStore || undefined)}
+                />
+            </div>
         </div>
-      </div>
     );
 }

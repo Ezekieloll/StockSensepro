@@ -18,6 +18,11 @@ interface ChatPanelProps {
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
+const getAuthHeaders = (): HeadersInit => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    return token ? { Authorization: `Bearer ${token}` } : {};
+};
+
 export default function ChatPanel({ isOpen, onClose, onScenarioAnalyzed }: ChatPanelProps) {
     const [messages, setMessages] = useState<Message[]>([
         {
@@ -44,7 +49,9 @@ export default function ChatPanel({ isOpen, onClose, onScenarioAnalyzed }: ChatP
     useEffect(() => {
         const fetchBaseline = async () => {
             try {
-                const response = await fetch(`${API_URL}/simulations/baseline`);
+                const response = await fetch(`${API_URL}/simulations/baseline`, {
+                    headers: getAuthHeaders(),
+                });
                 if (response.ok) {
                     const data = await response.json();
                     setBaseline(data.avg_demand);
@@ -56,7 +63,9 @@ export default function ChatPanel({ isOpen, onClose, onScenarioAnalyzed }: ChatP
         
         const fetchCategories = async () => {
             try {
-                const response = await fetch(`${API_URL}/gnn/category-summary`);
+                const response = await fetch(`${API_URL}/gnn/category-summary`, {
+                    headers: getAuthHeaders(),
+                });
                 if (response.ok) {
                     const data = await response.json();
                     // Convert to simple name mapping
@@ -88,6 +97,7 @@ export default function ChatPanel({ isOpen, onClose, onScenarioAnalyzed }: ChatP
         try {
             const response = await fetch(`${API_URL}/simulations/custom?scenario_text=${encodeURIComponent(scenarioText)}`, {
                 method: 'POST',
+                headers: getAuthHeaders(),
             });
 
             if (response.ok) {

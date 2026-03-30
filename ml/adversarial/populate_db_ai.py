@@ -21,8 +21,82 @@ from adversarial.inventory_risk import InventoryRiskEvaluator
 from adversarial.ai_scenario_generator import AIScenarioGenerator, Scenario
 
 
+def _normalize_category(value: str | None) -> str:
+    if not value:
+        return ""
+    return "".join(ch for ch in value.lower() if ch.isalnum())
+
+
+def _expand_affected_categories(
+    affected_categories: list[str],
+    top_db_categories: list[str],
+) -> set[str]:
+    """Map scenario category labels to normalized DB category tokens."""
+    expanded: set[str] = set()
+
+    alias_map = {
+        "freshproduce": {"freshproduce", "produce", "fresh", "fruits", "vegetables", "veg"},
+        "bakery": {"bakery", "bread"},
+        "beverages": {"beverages", "beverage", "drinks", "drink"},
+        "dairy": {"dairy", "milk", "eggs"},
+        "cannedgoods": {"cannedgoods", "canned", "pantry"},
+    }
+
+    normalized_top = [_normalize_category(cat) for cat in top_db_categories if cat]
+
+    for category in affected_categories:
+        normalized = _normalize_category(category)
+
+        if normalized in {"all", "random"}:
+            return {"__all__"}
+
+        if normalized == "promotionalcategories":
+            # Use top selling categories as promo-sensitive proxies.
+            expanded.update(normalized_top[:3])
+            continue
+
+        if normalized == "specificaffectedcategory":
+            # Use the strongest observed category signal as the affected target.
+            if normalized_top:
+                expanded.add(normalized_top[0])
+            continue
+
+        if normalized in alias_map:
+            expanded.update(alias_map[normalized])
+        elif normalized:
+            expanded.add(normalized)
+
+    return expanded
+
+
+def _category_matches(
+    sku_category: str | None,
+    affected_categories: list[str],
+    top_db_categories: list[str],
+) -> bool:
+    normalized_sku_category = _normalize_category(sku_category)
+    expanded = _expand_affected_categories(affected_categories, top_db_categories)
+
+    if "__all__" in expanded:
+        return True
+
+    if not normalized_sku_category:
+        return False
+
+    if normalized_sku_category in expanded:
+        return True
+
+    # Fallback partial match for close labels like "freshproduce" vs "produce".
+    return any(
+        token and (token in normalized_sku_category or normalized_sku_category in token)
+        for token in expanded
+    )
+
+
 def run_ai_adversarial_testing(
     selected_scenarios: list[str] = None,
+    category_scoped: bool = True,
+    custom_scenarios: list[dict] | None = None,
     db: Session = None
 ) -> dict:
     """
@@ -31,6 +105,9 @@ def run_ai_adversarial_testing(
     Args:
         selected_scenarios: List of scenario IDs to test (e.g., ['holiday_rush', 'weather_emergency'])
                           If None, tests all scenarios
+        category_scoped: If True, apply scenarios only to matching categories.
+                         If False, apply scenarios broadly to all inventory SKU-store pairs.
+        custom_scenarios: Optional list of user-defined scenario objects.
         db: Database session (optional, creates one if not provided)
     
     Returns:
@@ -48,28 +125,52 @@ def run_ai_adversarial_testing(
         scenario_gen = AIScenarioGenerator()
         
         # Get scenarios to test
-        all_scenarios = scenario_gen.scenarios_library
+        all_scenarios = list(scenario_gen.scenarios_library)
+        scenario_by_id = {scenario.id: scenario for scenario in all_scenarios}
+
+        if custom_scenarios:
+            for item in custom_scenarios:
+                try:
+                    scenario_obj = Scenario(
+                        id=str(item.get("id", "")).strip(),
+                        name=str(item.get("name", "Custom Scenario")).strip(),
+                        description=str(item.get("description", "")).strip(),
+                        demand_multiplier=float(item.get("demand_multiplier", 1.0)),
+                        duration_days=int(item.get("duration_days", 1)),
+                        affected_categories=list(item.get("affected_categories") or ["All"]),
+                        probability=float(item.get("probability", 0.5)),
+                        strategies=list(item.get("strategies") or []),
+                        priority_level=str(item.get("priority_level", "medium")).strip().lower(),
+                    )
+
+                    if scenario_obj.id:
+                        # Same ID means "edit/override" of existing scenario.
+                        scenario_by_id[scenario_obj.id] = scenario_obj
+                except Exception:
+                    # Skip malformed custom scenarios without breaking the full run.
+                    continue
+
+        all_scenarios = list(scenario_by_id.values())
+
         if selected_scenarios:
             scenarios_to_test = [s for s in all_scenarios if s.id in selected_scenarios]
+            if not scenarios_to_test:
+                # Guard against stale/invalid selected IDs from the client.
+                print("⚠️ Selected scenario IDs did not match available scenarios; using all scenarios instead")
+                scenarios_to_test = all_scenarios
         else:
             scenarios_to_test = all_scenarios
         
         print(f"🤖 AI Adversarial Testing - Analyzing {len(scenarios_to_test)} scenarios...")
+        print(f"   Scope mode: {'strict-category' if category_scoped else 'broad'}")
         
         # Clear existing adversarial risk data
         db.execute(delete(AdversarialRisk))
         db.commit()
         
-        # Get all unique SKU-store combinations from inventory
+        # Get all SKU-store combinations that actually exist in inventory.
         inventory_stmt = select(Inventory.sku, Inventory.store_id, Inventory.quantity).distinct()
         inventory_records = db.execute(inventory_stmt).all()
-        
-        # Get unique SKUs and stores
-        all_skus = list(set(inv.sku for inv in inventory_records))
-        all_stores = list(set(inv.store_id for inv in inventory_records))
-        
-        # Build inventory lookup
-        inventory_lookup = {(inv.sku, inv.store_id): inv.quantity for inv in inventory_records}
         
         # Build demand cache from actual transaction data (daily_demand table)
         print("📊 Building demand baseline from historical transaction data...")
@@ -96,6 +197,48 @@ def run_ai_adversarial_testing(
             demand_cache[(result.product_id, result.store_id)] = result.avg_daily_demand
         
         print(f"   Found {len(demand_cache)} SKU-store combinations with historical demand data")
+
+        # Build category lookup per SKU-store from historical data.
+        category_stmt = select(
+            DailyDemand.product_id,
+            DailyDemand.store_id,
+            DailyDemand.product_category,
+            func.count(DailyDemand.id).label("row_count"),
+        ).where(
+            DailyDemand.date >= thirty_days_ago,
+            DailyDemand.product_category.isnot(None),
+        ).group_by(
+            DailyDemand.product_id,
+            DailyDemand.store_id,
+            DailyDemand.product_category,
+        )
+
+        category_results = db.execute(category_stmt).all()
+
+        category_lookup: dict[tuple[str, str], str] = {}
+        sku_fallback_category: dict[str, str] = {}
+        pair_best_count: dict[tuple[str, str], int] = {}
+        sku_best_count: dict[str, int] = {}
+        category_totals: dict[str, float] = {}
+
+        for row in category_results:
+            pair_key = (row.product_id, row.store_id)
+            row_count = int(row.row_count or 0)
+            category = row.product_category
+
+            if row_count > pair_best_count.get(pair_key, -1):
+                pair_best_count[pair_key] = row_count
+                category_lookup[pair_key] = category
+
+            if row_count > sku_best_count.get(row.product_id, -1):
+                sku_best_count[row.product_id] = row_count
+                sku_fallback_category[row.product_id] = category
+
+            category_totals[category] = category_totals.get(category, 0.0) + row_count
+
+        top_db_categories = [
+            cat for cat, _ in sorted(category_totals.items(), key=lambda x: x[1], reverse=True)
+        ]
         
         # Results tracking
         results_by_scenario = {}
@@ -111,50 +254,50 @@ def run_ai_adversarial_testing(
             
             scenario_risks = []
             
-            # Test each SKU × Store combination
-            for sku in all_skus:
-                for store_id in all_stores:
-                    # Check if scenario affects this SKU category
-                    # Note: We don't have category info, so we'll apply to all for now
-                    # TODO: Add category filtering when SKU table is available
-                    
-                    # Get baseline demand (DailyDemand uses product_id which matches sku)
-                    baseline = demand_cache.get((sku, store_id), 5.0)
-                    
-                    # Calculate worst-case for this scenario
-                    worst_case = baseline * scenario.demand_multiplier
-                    
-                    # Get current inventory
-                    inventory = inventory_lookup.get((sku, store_id), 0)
-                    
-                    # Evaluate risk
-                    risk = risk_eval.evaluate(
-                        baseline_demand=baseline,
-                        worst_case_demand=worst_case,
-                        inventory_level=inventory
-                    )
-                    
-                    # Create risk record
-                    risk_record = AdversarialRisk(
-                        sku=sku,
-                        sku_id=sku,
-                        store_id=store_id,
-                        scenario_name=scenario.name,
-                        scenario_id=scenario.id,
-                        baseline_demand=baseline,
-                        worst_case_demand=worst_case,
-                        current_inventory=inventory,
-                        stockout=bool(risk["stockout"]),
-                        severity=float(risk["severity"]),
-                        days_of_cover=float(risk["days_of_cover"]),
-                        risk_score=float(risk["risk_score"]),
-                        probability=scenario.probability,
-                        strategies="|".join(scenario.strategies),  # Store as pipe-separated
-                        priority_level=scenario.priority_level
-                    )
-                    
-                    scenario_risks.append(risk_record)
-                    all_risk_records.append(risk_record)
+            # Test real inventory pairs; optionally scope by scenario categories.
+            for inv in inventory_records:
+                sku = inv.sku
+                store_id = inv.store_id
+                inventory = inv.quantity
+
+                category = category_lookup.get((sku, store_id)) or sku_fallback_category.get(sku)
+                if category_scoped and not _category_matches(category, scenario.affected_categories, top_db_categories):
+                    continue
+
+                # Get baseline demand (DailyDemand uses product_id which matches sku)
+                baseline = demand_cache.get((sku, store_id), 5.0)
+
+                # Calculate worst-case for this scenario
+                worst_case = baseline * scenario.demand_multiplier
+
+                # Evaluate risk
+                risk = risk_eval.evaluate(
+                    baseline_demand=baseline,
+                    worst_case_demand=worst_case,
+                    inventory_level=inventory,
+                )
+
+                # Create risk record
+                risk_record = AdversarialRisk(
+                    sku=sku,
+                    sku_id=sku,
+                    store_id=store_id,
+                    scenario_name=scenario.name,
+                    scenario_id=scenario.id,
+                    baseline_demand=baseline,
+                    worst_case_demand=worst_case,
+                    current_inventory=inventory,
+                    stockout=bool(risk["stockout"]),
+                    severity=float(risk["severity"]),
+                    days_of_cover=float(risk["days_of_cover"]),
+                    risk_score=float(risk["risk_score"]),
+                    probability=scenario.probability,
+                    strategies="|".join(scenario.strategies),  # Store as pipe-separated
+                    priority_level=scenario.priority_level,
+                )
+
+                scenario_risks.append(risk_record)
+                all_risk_records.append(risk_record)
             
             # Calculate scenario summary
             stockouts = sum(1 for r in scenario_risks if r.stockout)
@@ -193,6 +336,18 @@ def run_ai_adversarial_testing(
         
         print("\n" + "="*80)
         
+        if not results_by_scenario:
+            print("\n⚠️ No scenario results were produced")
+            print("\n✅ AI Adversarial Testing Complete!")
+            return {
+                "status": "success",
+                "scope_mode": "strict" if category_scoped else "broad",
+                "scenarios_tested": 0,
+                "total_records": len(all_risk_records),
+                "results_by_scenario": {},
+                "most_critical_scenario": {},
+            }
+
         # Find most critical scenario
         critical_scenario = max(
             results_by_scenario.items(),
@@ -205,6 +360,7 @@ def run_ai_adversarial_testing(
         
         return {
             "status": "success",
+            "scope_mode": "strict" if category_scoped else "broad",
             "scenarios_tested": len(scenarios_to_test),
             "total_records": len(all_risk_records),
             "results_by_scenario": results_by_scenario,

@@ -48,8 +48,9 @@ interface HighRiskSKU {
     sku: string;
     store_id: string;
     risk_score: number;
-    predicted_demand: number;
-    current_inventory: number;
+    baseline_demand?: number;
+    worst_case_demand?: number;
+    current_inventory?: number;
     days_of_cover: number;
     stockout: boolean;
 }
@@ -96,6 +97,21 @@ interface StagingUpload {
     error_message: string | null;
 }
 
+interface AuditLogEntry {
+    id: number;
+    action: string;
+    entity: string | null;
+    details: Record<string, unknown> | null;
+    ip_address: string | null;
+    created_at: string | null;
+    user: {
+        id: number;
+        name: string;
+        email: string;
+        role: string;
+    } | null;
+}
+
 // Mock data for demo (features not yet implemented)
 
 const mockPipelineStatus = [
@@ -103,13 +119,6 @@ const mockPipelineStatus = [
     { name: 'GNN Build', status: 'completed', lastRun: '1 day ago', duration: '1m 15s' },
     { name: 'Adversarial Test', status: 'completed', lastRun: '2 hours ago', duration: '2m 45s' },
     { name: 'Data ETL', status: 'idle', lastRun: '3 hours ago', duration: '45s' },
-];
-
-const mockAuditLogs = [
-    { time: '14:30:22', user: 'admin', action: 'Triggered forecast pipeline' },
-    { time: '14:28:15', user: 'admin', action: 'Approved data upload (trans_jan)' },
-    { time: '14:15:00', user: 'system', action: 'Scheduled adversarial test completed' },
-    { time: '13:45:30', user: 'jane@...', action: 'Created purchase order #1234' },
 ];
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -123,7 +132,7 @@ export default function AdminDashboard() {
     // Real data states
     const [modelMetrics, setModelMetrics] = useState<ModelMetrics | null>(null);
     const [graphStats, setGraphStats] = useState<GraphStats | null>(null);
-    const [highRiskSKUs, setHighRiskSKUs] = useState<HighRiskSKU[]>([]);
+    const [adversarialRisks, setAdversarialRisks] = useState<HighRiskSKU[] | null>(null);
     const [totalSKUs, setTotalSKUs] = useState<number>(0);
     const [users, setUsers] = useState<User[]>([]);
     const [showUserModal, setShowUserModal] = useState(false);
@@ -140,6 +149,8 @@ export default function AdminDashboard() {
     const [stagingUploads, setStagingUploads] = useState<StagingUpload[]>([]);
     const [uploadingCSV, setUploadingCSV] = useState(false);
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
+    const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
+    const [auditLogScope, setAuditLogScope] = useState<'latest5' | 'all'>('latest5');
     
     // Adversarial Testing
     const [runningTest, setRunningTest] = useState(false);
@@ -147,6 +158,94 @@ export default function AdminDashboard() {
     // Notifications
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'warning' | 'info' } | null>(null);
     const [confirmDialog, setConfirmDialog] = useState<{ title: string; message: string; onConfirm: () => void; type?: 'danger' | 'warning' | 'info' } | null>(null);
+
+    const dashboardCardClass = 'h-full';
+    const panelRowClass = 'p-3 bg-white/5 rounded-lg border border-white/5';
+
+    const authFetch = (endpoint: string, options: RequestInit = {}) => {
+        const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+        const hasFormDataBody = typeof FormData !== 'undefined' && options.body instanceof FormData;
+
+        const headers: HeadersInit = {
+            ...(hasFormDataBody ? {} : { 'Content-Type': 'application/json' }),
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            ...options.headers,
+        };
+
+        return fetch(`${API_BASE}${endpoint}`, {
+            ...options,
+            headers,
+        });
+    };
+
+    const refreshAuditLogs = async (scope: 'latest5' | 'all' = auditLogScope) => {
+        const limit = scope === 'latest5' ? 5 : 200;
+        const auditRes = await authFetch(`/api/audit-logs/?limit=${limit}`);
+        if (auditRes.ok) {
+            const data = await auditRes.json();
+            setAuditLogs(data);
+        }
+    };
+
+    const toCsvValue = (value: unknown) => {
+        const serialized = typeof value === 'string' ? value : JSON.stringify(value ?? '');
+        const escaped = serialized.replace(/"/g, '""');
+        return `"${escaped}"`;
+    };
+
+    const buildAuditExportFileName = () => {
+        const now = new Date();
+        const pad = (n: number) => String(n).padStart(2, '0');
+        const datePart = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+        const timePart = `${pad(now.getHours())}-${pad(now.getMinutes())}`;
+        return `audit_logs_${datePart}_${timePart}.csv`;
+    };
+
+    const handleExportAuditLogs = () => {
+        const headers = [
+            'id',
+            'timestamp',
+            'action',
+            'status',
+            'actor_email',
+            'actor_name',
+            'actor_role',
+            'entity',
+            'ip_address',
+            'details_json',
+        ];
+
+        const rows = auditLogs.map((log) => {
+            const status = getAuditStatus(log.action);
+            return [
+                log.id,
+                log.created_at || '',
+                log.action,
+                status,
+                log.user?.email || '',
+                log.user?.name || '',
+                log.user?.role || '',
+                log.entity || '',
+                log.ip_address || '',
+                log.details || {},
+            ];
+        });
+
+        const csvLines = [
+            headers.map(toCsvValue).join(','),
+            ...rows.map((row) => row.map(toCsvValue).join(',')),
+        ];
+
+        const blob = new Blob([csvLines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = buildAuditExportFileName();
+        document.body.appendChild(anchor);
+        anchor.click();
+        document.body.removeChild(anchor);
+        URL.revokeObjectURL(url);
+    };
 
     useEffect(() => {
         const userData = localStorage.getItem('user');
@@ -167,8 +266,14 @@ export default function AdminDashboard() {
     useEffect(() => {
         const fetchAdminData = async () => {
             try {
+                const token = localStorage.getItem('token');
+                if (!token) {
+                    router.push('/auth/login');
+                    return;
+                }
+
                 // Fetch model metrics
-                const metricsRes = await fetch(`${API_BASE}/analytics/model-metrics`);
+                const metricsRes = await authFetch('/analytics/model-metrics');
                 if (metricsRes.ok) {
                     const data = await metricsRes.json();
                     setModelMetrics({
@@ -179,7 +284,7 @@ export default function AdminDashboard() {
                 }
 
                 // Fetch GNN graph statistics
-                const graphRes = await fetch(`${API_BASE}/gnn/graph-statistics`);
+                const graphRes = await authFetch('/gnn/graph-statistics');
                 if (graphRes.ok) {
                     const data = await graphRes.json();
                     setGraphStats({
@@ -189,15 +294,15 @@ export default function AdminDashboard() {
                     setTotalSKUs(data.num_nodes);
                 }
 
-                // Fetch high-risk SKUs from adversarial testing
-                const riskRes = await fetch(`${API_BASE}/adversarial/?high_risk_only=true`);
+                // Fetch adversarial risk data for all risk buckets
+                const riskRes = await authFetch('/adversarial/');
                 if (riskRes.ok) {
                     const data = await riskRes.json();
-                    setHighRiskSKUs(data.slice(0, 5)); // Top 5 high-risk SKUs
+                    setAdversarialRisks(data);
                 }
 
                 // Fetch users
-                const usersRes = await fetch(`${API_BASE}/api/users/`);
+                const usersRes = await authFetch('/api/users/');
                 if (usersRes.ok) {
                     const data = await usersRes.json();
                     console.log('Users fetched:', data);
@@ -207,18 +312,21 @@ export default function AdminDashboard() {
                 }
                 
                 // Fetch purchase orders
-                const posRes = await fetch(`${API_BASE}/api/purchase-orders/`);
+                const posRes = await authFetch('/api/purchase-orders/');
                 if (posRes.ok) {
                     const data = await posRes.json();
                     setPurchaseOrders(data);
                 }
                 
                 // Fetch staging uploads
-                const stagingRes = await fetch(`${API_BASE}/csv-upload/staging`);
+                const stagingRes = await authFetch('/csv-upload/staging');
                 if (stagingRes.ok) {
                     const data = await stagingRes.json();
                     setStagingUploads(data);
                 }
+
+                // Fetch recent activity audit logs
+                await refreshAuditLogs();
             } catch (error) {
                 console.error('Failed to fetch admin data:', error);
             }
@@ -228,6 +336,12 @@ export default function AdminDashboard() {
             fetchAdminData();
         }
     }, [loading]);
+
+    useEffect(() => {
+        if (!loading) {
+            refreshAuditLogs(auditLogScope);
+        }
+    }, [auditLogScope, loading]);
 
     const handleLogout = () => {
         localStorage.removeItem('user');
@@ -258,9 +372,116 @@ export default function AdminDashboard() {
     };
 
     const getRiskColor = (score: number) => {
-        if (score >= 0.8) return 'text-error';
-        if (score >= 0.5) return 'text-warning';
+        if (score >= 0.6) return 'text-error';
+        if (score >= 0.3) return 'text-warning';
         return 'text-success';
+    };
+
+    const formatAuditAction = (log: AuditLogEntry) => {
+        const actionLabels: Record<string, string> = {
+            AUTH_LOGIN_SUCCESS: 'Logged in',
+            AUTH_LOGIN_FAILED: 'Failed login attempt',
+            AUTH_SIGNUP_SUCCESS: 'Created account',
+            CSV_UPLOADED: 'Uploaded CSV file',
+            CSV_UPLOAD_APPROVED: 'Approved CSV upload',
+            CSV_UPLOAD_REJECTED: 'Rejected CSV upload',
+            PO_CREATED: 'Created purchase order',
+            PO_STATUS_UPDATED: 'Updated purchase order status',
+            PO_DELIVERED: 'Delivered purchase order',
+            PO_DELETED: 'Deleted purchase order',
+            ADVERSARIAL_TEST_COMPLETED: 'Completed adversarial test run',
+            ADVERSARIAL_TEST_FAILED: 'Adversarial test run failed',
+            ADVERSARIAL_TEST_TIMEOUT: 'Adversarial test run timed out',
+            AI_ADVERSARIAL_TEST_COMPLETED: 'Completed AI adversarial test run',
+            AI_ADVERSARIAL_TEST_FAILED: 'AI adversarial test run failed',
+            CUSTOM_SCENARIO_CREATED: 'Added custom scenario',
+            CUSTOM_SCENARIO_UPDATED: 'Updated custom scenario',
+            CUSTOM_SCENARIO_DELETED: 'Deleted custom scenario',
+        };
+
+        const base = actionLabels[log.action] || log.action.replaceAll('_', ' ').toLowerCase();
+        const details = log.details || {};
+
+        if (log.action === 'CSV_UPLOADED' && typeof details.filename === 'string') {
+            return `${base} (${details.filename})`;
+        }
+
+        if (log.entity && log.entity.startsWith('purchase_order:')) {
+            const poId = log.entity.split(':')[1];
+            return `${base} #${poId}`;
+        }
+
+        if (log.entity && log.entity.startsWith('scenario:')) {
+            if (typeof details.scenario_name === 'string' && details.scenario_name.trim()) {
+                return `${base} (${details.scenario_name})`;
+            }
+            const scenarioId = log.entity.split(':')[1];
+            return `${base} (${scenarioId})`;
+        }
+
+        return base.charAt(0).toUpperCase() + base.slice(1);
+    };
+
+    const formatAuditTime = (iso: string | null) => {
+        if (!iso) return 'unknown time';
+
+        const date = new Date(iso);
+        if (Number.isNaN(date.getTime())) return 'unknown time';
+
+        return date.toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false,
+        });
+    };
+
+    const formatAuditActor = (log: AuditLogEntry) => {
+        if (log.user?.email) return log.user.email;
+        if (log.user?.name) return log.user.name;
+        return 'system';
+    };
+
+    const getAuditStatus = (action: string): 'success' | 'warning' | 'error' | 'info' => {
+        if (action.endsWith('_FAILED')) return 'error';
+        if (action.endsWith('_TIMEOUT')) return 'warning';
+        if (action.includes('REJECTED') || action.includes('DELETED')) return 'warning';
+        if (action.includes('SUCCESS') || action.includes('CREATED') || action.includes('UPDATED') || action.includes('APPROVED') || action.includes('COMPLETED') || action.includes('DELIVERED') || action.includes('UPLOADED')) {
+            return 'success';
+        }
+        return 'info';
+    };
+
+    const getAuditStatusLabel = (status: 'success' | 'warning' | 'error' | 'info') => {
+        if (status === 'success') return 'Success';
+        if (status === 'warning') return 'Warning';
+        if (status === 'error') return 'Error';
+        return 'Info';
+    };
+
+    const getAuditStatusClasses = (status: 'success' | 'warning' | 'error' | 'info') => {
+        if (status === 'success') {
+            return {
+                iconWrap: 'bg-success/20',
+                iconColor: 'text-success',
+            };
+        }
+        if (status === 'warning') {
+            return {
+                iconWrap: 'bg-warning/20',
+                iconColor: 'text-warning',
+            };
+        }
+        if (status === 'error') {
+            return {
+                iconWrap: 'bg-error/20',
+                iconColor: 'text-error',
+            };
+        }
+        return {
+            iconWrap: 'bg-info/20',
+            iconColor: 'text-info',
+        };
     };
 
     const openUserModal = (user?: User) => {
@@ -288,26 +509,26 @@ export default function AdminDashboard() {
                 if (userForm.password) {
                     updateData.password = userForm.password;
                 }
-                const res = await fetch(`${API_BASE}/api/users/${editingUser.id}`, {
+                const res = await authFetch(`/api/users/${editingUser.id}`, {
                     method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(updateData),
                 });
                 if (res.ok) {
                     const updated = await res.json();
                     setUsers(users.map(u => u.id === updated.id ? updated : u));
+                    await refreshAuditLogs();
                     closeUserModal();
                 }
             } else {
                 // Create new user
-                const res = await fetch(`${API_BASE}/api/users/`, {
+                const res = await authFetch('/api/users/', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(userForm),
                 });
                 if (res.ok) {
                     const newUser = await res.json();
                     setUsers([...users, newUser]);
+                    await refreshAuditLogs();
                     closeUserModal();
                 } else {
                     const error = await res.json();
@@ -324,9 +545,10 @@ export default function AdminDashboard() {
         if (!confirm('Are you sure you want to delete this user?')) return;
         
         try {
-            const res = await fetch(`${API_BASE}/api/users/${userId}`, { method: 'DELETE' });
+            const res = await authFetch(`/api/users/${userId}`, { method: 'DELETE' });
             if (res.ok) {
                 setUsers(users.filter(u => u.id !== userId));
+                await refreshAuditLogs();
             } else {
                 const error = await res.json();
                 alert(error.detail || 'Failed to delete user');
@@ -339,14 +561,14 @@ export default function AdminDashboard() {
 
     const handleApprovePO = async (poId: number) => {
         try {
-            const res = await fetch(`${API_BASE}/api/purchase-orders/${poId}/status`, {
+            const res = await authFetch(`/api/purchase-orders/${poId}/status`, {
                 method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ status: 'approved' }),
             });
             if (res.ok) {
                 const updated = await res.json();
                 setPurchaseOrders(purchaseOrders.map(po => po.id === updated.id ? updated : po));
+                await refreshAuditLogs();
             }
         } catch (error) {
             console.error('Failed to approve PO:', error);
@@ -362,9 +584,8 @@ export default function AdminDashboard() {
                 quantity_delivered: item.quantity_requested
             })) || [];
             
-            const res = await fetch(`${API_BASE}/api/purchase-orders/${selectedPO.id}/deliver`, {
+            const res = await authFetch(`/api/purchase-orders/${selectedPO.id}/deliver`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     actual_delivery_date: deliveryDate,
                     items: items
@@ -376,6 +597,7 @@ export default function AdminDashboard() {
                 setPurchaseOrders(purchaseOrders.map(po => po.id === updated.id ? updated : po));
                 setShowDeliverModal(false);
                 setSelectedPO(null);
+                await refreshAuditLogs();
             }
         } catch (error) {
             console.error('Failed to deliver PO:', error);
@@ -396,27 +618,42 @@ export default function AdminDashboard() {
         setRunningTest(true);
         try {
             // Call backend endpoint to trigger adversarial testing
-            const res = await fetch(`${API_BASE}/adversarial/run-test`, {
+            const res = await authFetch('/adversarial/run-test', {
                 method: 'POST',
             });
             
             if (res.ok) {
                 const result = await res.json();
-                alert(`✅ ${result.message}\n\nAdversarial testing completed successfully!`);
+                setToast({
+                    message: `${result.message}\n\nAdversarial testing completed successfully.`,
+                    type: 'success',
+                });
                 
-                // Refresh high-risk SKUs
-                const riskRes = await fetch(`${API_BASE}/adversarial/?high_risk_only=true`);
+                // Refresh adversarial risk data after test
+                const riskRes = await authFetch('/adversarial/');
                 if (riskRes.ok) {
                     const data = await riskRes.json();
-                    setHighRiskSKUs(data.slice(0, 5));
+                    setAdversarialRisks(data);
+                    await refreshAuditLogs();
+                } else {
+                    setToast({
+                        message: 'Test completed, but failed to refresh adversarial risk data.',
+                        type: 'warning',
+                    });
                 }
             } else {
                 const error = await res.json();
-                alert(`❌ Test failed: ${error.detail}`);
+                setToast({
+                    message: `Adversarial test failed: ${error.detail || 'Unknown error'}`,
+                    type: 'error',
+                });
             }
         } catch (error) {
             console.error('Failed to run adversarial test:', error);
-            alert('Failed to trigger adversarial test. Check console for details.');
+            setToast({
+                message: 'Failed to trigger adversarial test. Check console for details.',
+                type: 'error',
+            });
         } finally {
             setRunningTest(false);
         }
@@ -441,7 +678,7 @@ export default function AdminDashboard() {
             formData.append('file', selectedFile);
             formData.append('uploaded_by', user?.email || 'admin@stocksense.com');
 
-            const res = await fetch(`${API_BASE}/csv-upload/upload`, {
+            const res = await authFetch('/csv-upload/upload', {
                 method: 'POST',
                 body: formData,
             });
@@ -454,11 +691,13 @@ export default function AdminDashboard() {
                 });
                 
                 // Refresh staging queue
-                const stagingRes = await fetch(`${API_BASE}/csv-upload/staging`);
+                const stagingRes = await authFetch('/csv-upload/staging');
                 if (stagingRes.ok) {
                     const data = await stagingRes.json();
                     setStagingUploads(data);
                 }
+
+                await refreshAuditLogs();
                 
                 setSelectedFile(null);
                 // Reset file input
@@ -484,7 +723,7 @@ export default function AdminDashboard() {
             onConfirm: async () => {
                 setConfirmDialog(null);
                 try {
-                    const res = await fetch(`${API_BASE}/csv-upload/staging/${uploadId}/approve`, {
+                    const res = await authFetch(`/csv-upload/staging/${uploadId}/approve`, {
                         method: 'POST',
                     });
                     
@@ -496,11 +735,13 @@ export default function AdminDashboard() {
                         });
                         
                         // Refresh staging queue
-                        const stagingRes = await fetch(`${API_BASE}/csv-upload/staging`);
+                        const stagingRes = await authFetch('/csv-upload/staging');
                         if (stagingRes.ok) {
                             const data = await stagingRes.json();
                             setStagingUploads(data);
                         }
+
+                        await refreshAuditLogs();
                     } else {
                         const error = await res.json();
                         setToast({ message: `Approval failed: ${error.detail}`, type: 'error' });
@@ -521,7 +762,7 @@ export default function AdminDashboard() {
             onConfirm: async () => {
                 setConfirmDialog(null);
                 try {
-                    const res = await fetch(`${API_BASE}/csv-upload/staging/${uploadId}/reject`, {
+                    const res = await authFetch(`/csv-upload/staging/${uploadId}/reject`, {
                         method: 'POST',
                     });
                     
@@ -529,11 +770,13 @@ export default function AdminDashboard() {
                         setToast({ message: 'Upload rejected and deleted', type: 'success' });
                         
                         // Refresh staging queue
-                        const stagingRes = await fetch(`${API_BASE}/csv-upload/staging`);
+                        const stagingRes = await authFetch('/csv-upload/staging');
                         if (stagingRes.ok) {
                             const data = await stagingRes.json();
                             setStagingUploads(data);
                         }
+
+                        await refreshAuditLogs();
                     } else {
                         const error = await res.json();
                         setToast({ message: `Rejection failed: ${error.detail}`, type: 'error' });
@@ -545,6 +788,39 @@ export default function AdminDashboard() {
             }
         });
     };
+
+    const allRisks = adversarialRisks ?? [];
+
+    // Policy v1 buckets:
+    // High: stockout OR days_of_cover < 3 OR risk_score >= 0.60
+    // Medium: not High AND (3 <= days_of_cover < 7 OR 0.30 <= risk_score < 0.60)
+    // Low: everything else
+    const highRiskScoreThreshold = 0.6;
+    const mediumRiskScoreThreshold = 0.3;
+    const highDaysOfCoverThreshold = 3;
+    const mediumDaysOfCoverThreshold = 7;
+
+    const isHighRisk = (item: HighRiskSKU) => (
+        item.stockout ||
+        item.days_of_cover < highDaysOfCoverThreshold ||
+        item.risk_score >= highRiskScoreThreshold
+    );
+
+    const isMediumRisk = (item: HighRiskSKU) => (
+        !isHighRisk(item) && (
+            (item.days_of_cover >= highDaysOfCoverThreshold && item.days_of_cover < mediumDaysOfCoverThreshold) ||
+            (item.risk_score >= mediumRiskScoreThreshold && item.risk_score < highRiskScoreThreshold)
+        )
+    );
+
+    const highRiskItems = allRisks.filter(isHighRisk);
+    const mediumRiskItems = allRisks.filter(isMediumRisk);
+    const lowRiskItems = allRisks.filter((item) => !isHighRisk(item) && !isMediumRisk(item));
+
+    const highRiskCount = highRiskItems.length;
+    const mediumRiskCount = mediumRiskItems.length;
+    const lowRiskCount = lowRiskItems.length;
+    const highRiskSKUs = highRiskItems;
 
     return (
         <div className="min-h-screen bg-background text-foreground">
@@ -560,7 +836,7 @@ export default function AdminDashboard() {
                                 <span className="text-xl font-bold gradient-text">StockSensePro</span>
                             </div>
                             <div className="hidden md:flex items-center gap-1">
-                                {['overview', 'purchase-orders', 'ai-scenarios', 'scenario-chat', 'data', 'ml', 'testing', 'users', 'logs'].map((tab) => (
+                                {['overview', 'purchase-orders', 'ai-scenarios', 'scenario-chat'].map((tab) => (
                                     <button
                                         key={tab}
                                         onClick={() => {
@@ -577,9 +853,9 @@ export default function AdminDashboard() {
                                             : 'text-muted hover:text-foreground hover:bg-white/5'
                                             }`}
                                     >
-                                        {tab === 'purchase-orders' ? 'Purchase Orders' : 
-                                         tab === 'ai-scenarios' ? '🤖 AI Scenarios' :
-                                         tab === 'scenario-chat' ? '💬 AI Chat' :
+                                        {tab === 'purchase-orders' ? 'Purchase Orders' :
+                                         tab === 'ai-scenarios' ? 'AI Scenarios' :
+                                         tab === 'scenario-chat' ? 'AI Chat' :
                                          tab.charAt(0).toUpperCase() + tab.slice(1)}
                                     </button>
                                 ))}
@@ -663,7 +939,7 @@ export default function AdminDashboard() {
                         <div className="flex items-center justify-between">
                             <div>
                                 <p className="text-xs text-muted uppercase tracking-wider">High Risk SKUs</p>
-                                <h3 className="text-2xl font-bold mt-1 text-error">{highRiskSKUs.length}</h3>
+                                <h3 className="text-2xl font-bold mt-1 text-error">{highRiskCount}</h3>
                             </div>
                             <div className="w-10 h-10 bg-error/10 rounded-lg flex items-center justify-center text-error">
                                 <AlertIcon size={20} />
@@ -745,7 +1021,7 @@ export default function AdminDashboard() {
                                                                     size="sm"
                                                                     onClick={async () => {
                                                                         // Fetch full PO details with items
-                                                                        const res = await fetch(`${API_BASE}/api/purchase-orders/${po.id}`);
+                                                                        const res = await authFetch(`/api/purchase-orders/${po.id}`);
                                                                         if (res.ok) {
                                                                             const fullPO = await res.json();
                                                                             setSelectedPO(fullPO);
@@ -782,7 +1058,7 @@ export default function AdminDashboard() {
                     <>
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
                     {/* Data Management */}
-                    <Card glass>
+                    <Card glass className={dashboardCardClass}>
                         <CardHeader>
                             <div className="flex items-center justify-between">
                                 <div>
@@ -889,7 +1165,7 @@ export default function AdminDashboard() {
                     </Card>
 
                     {/* ML Operations */}
-                    <Card glass>
+                    <Card glass className={dashboardCardClass}>
                         <CardHeader>
                             <div className="flex items-center justify-between">
                                 <div>
@@ -918,24 +1194,11 @@ export default function AdminDashboard() {
                                     <p className="text-xs text-muted mt-1">{graphStats?.num_edges?.toLocaleString() || '14,578'} edges</p>
                                 </div>
                             </div>
-                            <div className="flex flex-wrap gap-2">
-                                <Button variant="primary" size="sm">
-                                    <ActivityIcon size={14} />
-                                    Run Forecast
-                                </Button>
-                                <Button variant="secondary" size="sm">
-                                    <RefreshIcon size={14} />
-                                    Retrain Model
-                                </Button>
-                                <Button variant="ghost" size="sm">
-                                    Generate GNN
-                                </Button>
-                            </div>
                         </CardContent>
                     </Card>
 
                     {/* Adversarial Testing */}
-                    <Card glass>
+                    <Card glass className={dashboardCardClass}>
                         <CardHeader>
                             <div className="flex items-center justify-between">
                                 <div>
@@ -958,20 +1221,20 @@ export default function AdminDashboard() {
                         <CardContent>
                             <div className="grid grid-cols-3 gap-3 mb-4">
                                 <div className="text-center p-3 bg-error/10 rounded-lg">
-                                    <p className="text-2xl font-bold text-error">{highRiskSKUs.length}</p>
+                                    <p className="text-2xl font-bold text-error">{highRiskCount}</p>
                                     <p className="text-xs text-muted">High Risk</p>
                                 </div>
                                 <div className="text-center p-3 bg-warning/10 rounded-lg">
-                                    <p className="text-2xl font-bold text-warning">-</p>
+                                    <p className="text-2xl font-bold text-warning">{mediumRiskCount}</p>
                                     <p className="text-xs text-muted">Medium</p>
                                 </div>
                                 <div className="text-center p-3 bg-success/10 rounded-lg">
-                                    <p className="text-2xl font-bold text-success">-</p>
+                                    <p className="text-2xl font-bold text-success">{lowRiskCount}</p>
                                     <p className="text-xs text-muted">Low Risk</p>
                                 </div>
                             </div>
-                            <p className="text-xs text-muted uppercase tracking-wider mb-2">High Risk SKUs</p>
-                            <div className="space-y-2">
+                            <p className="text-xs text-muted uppercase tracking-wider mb-2">High Risk SKUs ({highRiskCount})</p>
+                            <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
                                 {highRiskSKUs.length > 0 ? (
                                     highRiskSKUs.map((item, idx) => (
                                         <div key={idx} className="flex items-center justify-between p-2 bg-white/5 rounded-lg">
@@ -988,14 +1251,16 @@ export default function AdminDashboard() {
                                         </div>
                                     ))
                                 ) : (
-                                    <p className="text-sm text-muted text-center py-4">Loading high-risk SKUs...</p>
+                                    <p className="text-sm text-muted text-center py-4">
+                                        {adversarialRisks === null ? 'Loading risk data...' : 'No high-risk SKUs in current run.'}
+                                    </p>
                                 )}
                             </div>
                         </CardContent>
                     </Card>
 
                     {/* User Management */}
-                    <Card glass>
+                    <Card glass className={dashboardCardClass}>
                         <CardHeader>
                             <div className="flex items-center justify-between">
                                 <div>
@@ -1058,7 +1323,7 @@ export default function AdminDashboard() {
                 {/* System Monitoring & Audit Logs */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                     {/* Pipeline Status */}
-                    <Card glass>
+                    <Card glass className={dashboardCardClass}>
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2">
                                 <SettingsIcon size={18} className="text-primary" />
@@ -1069,7 +1334,7 @@ export default function AdminDashboard() {
                         <CardContent>
                             <div className="space-y-3">
                                 {mockPipelineStatus.map((pipeline, idx) => (
-                                    <div key={idx} className="flex items-center justify-between p-3 bg-white/5 rounded-lg">
+                                    <div key={idx} className={`flex items-center justify-between ${panelRowClass}`}>
                                         <div className="flex items-center gap-3">
                                             <div className={`w-2 h-2 rounded-full ${pipeline.status === 'completed' ? 'bg-success' :
                                                 pipeline.status === 'running' ? 'bg-info animate-pulse' : 'bg-muted'
@@ -1088,7 +1353,7 @@ export default function AdminDashboard() {
                     </Card>
 
                     {/* Audit Logs */}
-                    <Card glass>
+                    <Card glass className={dashboardCardClass}>
                         <CardHeader>
                             <div className="flex items-center justify-between">
                                 <div>
@@ -1098,24 +1363,47 @@ export default function AdminDashboard() {
                                     </CardTitle>
                                     <CardDescription>System audit logs</CardDescription>
                                 </div>
-                                <Button variant="ghost" size="sm">Export</Button>
+                                <div className="flex items-center gap-2">
+                                    <Button
+                                        variant={auditLogScope === 'latest5' ? 'secondary' : 'ghost'}
+                                        size="sm"
+                                        onClick={() => setAuditLogScope('latest5')}
+                                    >
+                                        Latest 5
+                                    </Button>
+                                    <Button
+                                        variant={auditLogScope === 'all' ? 'secondary' : 'ghost'}
+                                        size="sm"
+                                        onClick={() => setAuditLogScope('all')}
+                                    >
+                                        All Logs
+                                    </Button>
+                                    <Button variant="ghost" size="sm" onClick={handleExportAuditLogs}>Export</Button>
+                                </div>
                             </div>
                         </CardHeader>
                         <CardContent>
                             <div className="space-y-3">
-                                {mockAuditLogs.map((log, idx) => (
-                                    <div key={idx} className="flex items-start gap-3 p-3 bg-white/5 rounded-lg">
-                                        <div className="w-8 h-8 bg-surface-elevated rounded-full flex items-center justify-center flex-shrink-0">
-                                            <CheckIcon size={12} className="text-success" />
+                                {auditLogs.length > 0 ? auditLogs.map((log) => (
+                                    <div key={log.id} className={`flex items-start gap-3 ${panelRowClass}`}>
+                                        <div
+                                            className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${getAuditStatusClasses(getAuditStatus(log.action)).iconWrap}`}
+                                        >
+                                            <CheckIcon size={12} className={getAuditStatusClasses(getAuditStatus(log.action)).iconColor} />
                                         </div>
                                         <div className="flex-1 min-w-0">
-                                            <p className="text-sm">{log.action}</p>
+                                            <div className="flex items-center justify-between gap-2">
+                                                <p className="text-sm">{formatAuditAction(log)}</p>
+                                                <Badge variant={getAuditStatus(log.action)}>{getAuditStatusLabel(getAuditStatus(log.action))}</Badge>
+                                            </div>
                                             <p className="text-xs text-muted mt-1">
-                                                <span className="font-medium">{log.user}</span> • {log.time}
+                                                <span className="font-medium">{formatAuditActor(log)}</span> • {formatAuditTime(log.created_at)}
                                             </p>
                                         </div>
                                     </div>
-                                ))}
+                                )) : (
+                                    <div className="text-center py-8 text-sm text-muted">No recent activity yet</div>
+                                )}
                             </div>
                         </CardContent>
                     </Card>

@@ -8,9 +8,15 @@ import Badge from '@/components/ui/Badge';
 import { RefreshIcon, DatabaseIcon, SearchIcon } from '@/components/ui/Icons';
 
 // Dynamically import ForceGraph3D to avoid SSR issues
-const ForceGraph3D = dynamic(() => import('react-force-graph-3d'), { ssr: false });
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const ForceGraph3D = dynamic(() => import('react-force-graph-3d'), { ssr: false }) as any;
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
+const getAuthHeaders = (): HeadersInit => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    return token ? { Authorization: `Bearer ${token}` } : {};
+};
 
 interface GraphNode {
     id: string;
@@ -102,7 +108,8 @@ const CATEGORY_NAMES: Record<string, string> = {
 };
 
 export default function GNN3DVisualizer() {
-    const fgRef = useRef<unknown>(null);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const fgRef = useRef<any>(null);
     const [view, setView] = useState<'3d' | 'explorer' | 'reference'>('explorer');
     const [stats, setStats] = useState<GraphStats | null>(null);
     const [loading, setLoading] = useState(false);
@@ -123,10 +130,11 @@ export default function GNN3DVisualizer() {
     useEffect(() => {
         // Center camera after graph loads
         if (fgRef.current && graphData && view === '3d') {
+            const fg = fgRef.current;
             setTimeout(() => {
                 // Center the graph and set good viewing distance
                 const distance = 400;
-                fgRef.current.cameraPosition(
+                fg.cameraPosition(
                     { x: 0, y: 0, z: distance },
                     { x: 0, y: 0, z: 0 },
                     1000
@@ -143,7 +151,9 @@ export default function GNN3DVisualizer() {
 
     const fetchStats = async () => {
         try {
-            const response = await fetch(`${API_URL}/gnn/graph-statistics`);
+            const response = await fetch(`${API_URL}/gnn/graph-statistics`, {
+                headers: getAuthHeaders(),
+            });
             if (response.ok) {
                 const data = await response.json();
                 setStats(data);
@@ -156,7 +166,9 @@ export default function GNN3DVisualizer() {
     const fetchGraphPreview = async () => {
         setLoading(true);
         try {
-            const response = await fetch(`${API_URL}/gnn/graph-structure?limit=240&min_edge_weight=0.0`);
+            const response = await fetch(`${API_URL}/gnn/graph-structure?limit=240&min_edge_weight=0.0`, {
+                headers: getAuthHeaders(),
+            });
             if (response.ok) {
                 const data = await response.json();
                 setGraphData(data);
@@ -173,7 +185,9 @@ export default function GNN3DVisualizer() {
 
     const fetchInfluences = async (sku: string) => {
         try {
-            const response = await fetch(`${API_URL}/gnn/product-influences/${sku}?top_k=10`);
+            const response = await fetch(`${API_URL}/gnn/product-influences/${sku}?top_k=10`, {
+                headers: getAuthHeaders(),
+            });
             if (response.ok) {
                 const data = await response.json();
                 setInfluences(data.influences);
@@ -185,7 +199,9 @@ export default function GNN3DVisualizer() {
 
     const fetchProductCatalog = async () => {
         try {
-            const response = await fetch(`${API_URL}/products/catalog`);
+            const response = await fetch(`${API_URL}/products/catalog`, {
+                headers: getAuthHeaders(),
+            });
             if (response.ok) {
                 const data = await response.json();
                 setProductCatalog(data.sku_lookup);
@@ -229,7 +245,7 @@ export default function GNN3DVisualizer() {
     const selectedNode = graphData?.nodes.find(n => n.id === selectedSKU);
 
     const filteredSKUs = graphData?.nodes.filter(node => {
-        const matchesSearch = searchFilter ? 
+        const matchesSearch = searchFilter ?
             node.id.toLowerCase().includes(searchFilter.toLowerCase()) ||
             getSKUDescription(node.id).toLowerCase().includes(searchFilter.toLowerCase())
             : true;
@@ -324,100 +340,100 @@ export default function GNN3DVisualizer() {
             {/* 3D Visualization View */}
             {view === '3d' && (
                 <>
-                {/* Controls for 3D View */}
-                <Card glass>
-                    <CardContent className="p-4">
-                        <div className="flex items-center justify-between mb-4">
-                            <div className="flex items-center gap-4">
-                                <label className="flex items-center gap-2 text-sm">
-                                    <input
-                                        type="checkbox"
-                                        checked={showEdges}
-                                        onChange={(e) => setShowEdges(e.target.checked)}
-                                        className="rounded"
-                                    />
-                                    <span>Show Edges</span>
-                                </label>
-                            </div>
-                            <div className="flex gap-4 text-xs">
-                                <div className="flex items-center gap-2">
-                                    <div className="w-8 h-1 bg-blue-400" />
-                                    <span className="text-muted">Weak (0-0.5)</span>
+                    {/* Controls for 3D View */}
+                    <Card glass>
+                        <CardContent className="p-4">
+                            <div className="flex items-center justify-between mb-4">
+                                <div className="flex items-center gap-4">
+                                    <label className="flex items-center gap-2 text-sm">
+                                        <input
+                                            type="checkbox"
+                                            checked={showEdges}
+                                            onChange={(e) => setShowEdges(e.target.checked)}
+                                            className="rounded"
+                                        />
+                                        <span>Show Edges</span>
+                                    </label>
                                 </div>
-                                <div className="flex items-center gap-2">
-                                    <div className="w-8 h-1 bg-green-500" />
-                                    <span className="text-muted">Moderate (0.5-1.0)</span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <div className="w-8 h-1 bg-yellow-400" />
-                                    <span className="text-muted">Strong (1.0-2.0)</span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <div className="w-8 h-1 bg-red-500" />
-                                    <span className="text-muted">Very Strong (2.0+)</span>
-                                </div>
-                            </div>
-                        </div>
-                        <div className="bg-info/10 border border-info/20 rounded-lg p-3">
-                            <p className="text-xs text-info">
-                                <strong>ℹ️ Real Data:</strong> Edge weights represent actual product relationships based on:
-                                <span className="ml-2">• Co-purchase patterns from transaction data</span>
-                                <span className="ml-2">• Category-based connections (substitutes)</span>
-                                <span className="ml-2">• Temporal demand correlations</span>
-                                <br />
-                                <strong className="mt-1 block">Note:</strong> Products cluster naturally by category and purchase behavior. Disconnected groups indicate products rarely bought together.
-                            </p>
-                        </div>
-                    </CardContent>
-                </Card>
-
-                <Card glass>
-                    <CardContent className="p-0">
-                        <div className="relative overflow-hidden rounded-lg" style={{ height: '700px', width: '100%' }}>
-                            {loading ? (
-                                <div className="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-                                    <div className="text-center">
-                                        <RefreshIcon size={32} className="mx-auto mb-2 animate-spin text-primary" />
-                                        <p className="text-sm text-muted">Loading graph...</p>
+                                <div className="flex gap-4 text-xs">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-8 h-1 bg-blue-400" />
+                                        <span className="text-muted">Weak (0-0.5)</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-8 h-1 bg-green-500" />
+                                        <span className="text-muted">Moderate (0.5-1.0)</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-8 h-1 bg-yellow-400" />
+                                        <span className="text-muted">Strong (1.0-2.0)</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-8 h-1 bg-red-500" />
+                                        <span className="text-muted">Very Strong (2.0+)</span>
                                     </div>
                                 </div>
-                            ) : graphData ? (
-                                <ForceGraph3D
-                                    ref={fgRef}
-                                    graphData={{
-                                        nodes: graphData.nodes.map(node => ({
-                                            ...node,
-                                            color: getNodeColor(node),
-                                            val: getNodeSize(node)
-                                        })),
-                                        links: showEdges ? graphData.edges.map(edge => ({
-                                            source: edge.source,
-                                            target: edge.target,
-                                            value: edge.weight,
-                                            color: getEdgeColor(edge.weight),
-                                            distance: 50
-                                        })) : []
-                                    }}
-                                    nodeLabel={(node: unknown) => {
-                                        const n = node as { id: string };
-                                        return `${n.id}\n${getSKUDescription(n.id)}`;
-                                    }}
-                                    linkColor={(link: unknown) => (link as { color: string }).color}
-                                    linkWidth={(link: unknown) => {
-                                        const l = link as { value: number };
-                                        return Math.max(0.2, Math.min(3, l.value / 2));
-                                    }}
-                                    linkOpacity={0.6}
-                                    backgroundColor="rgba(0,0,0,0)"
-                                    showNavInfo={false}
-                                    onNodeClick={(node: unknown) => setSelectedSKU((node as { id: string }).id)}
-                                />
-                            ) : (
-                                <div className="flex items-center justify-center h-full text-muted">No graph data available</div>
-                            )}
-                        </div>
-                    </CardContent>
-                </Card>
+                            </div>
+                            <div className="bg-info/10 border border-info/20 rounded-lg p-3">
+                                <p className="text-xs text-info">
+                                    <strong>ℹ️ Real Data:</strong> Edge weights represent actual product relationships based on:
+                                    <span className="ml-2">• Co-purchase patterns from transaction data</span>
+                                    <span className="ml-2">• Category-based connections (substitutes)</span>
+                                    <span className="ml-2">• Temporal demand correlations</span>
+                                    <br />
+                                    <strong className="mt-1 block">Note:</strong> Products cluster naturally by category and purchase behavior. Disconnected groups indicate products rarely bought together.
+                                </p>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <Card glass>
+                        <CardContent className="p-0">
+                            <div className="relative overflow-hidden rounded-lg" style={{ height: '700px', width: '100%' }}>
+                                {loading ? (
+                                    <div className="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+                                        <div className="text-center">
+                                            <RefreshIcon size={32} className="mx-auto mb-2 animate-spin text-primary" />
+                                            <p className="text-sm text-muted">Loading graph...</p>
+                                        </div>
+                                    </div>
+                                ) : graphData ? (
+                                    <ForceGraph3D
+                                        ref={fgRef}
+                                        graphData={{
+                                            nodes: graphData.nodes.map(node => ({
+                                                ...node,
+                                                color: getNodeColor(node),
+                                                val: getNodeSize(node)
+                                            })),
+                                            links: showEdges ? graphData.edges.map(edge => ({
+                                                source: edge.source,
+                                                target: edge.target,
+                                                value: edge.weight,
+                                                color: getEdgeColor(edge.weight),
+                                                distance: 50
+                                            })) : []
+                                        }}
+                                        nodeLabel={(node: unknown) => {
+                                            const n = node as { id: string };
+                                            return `${n.id}\n${getSKUDescription(n.id)}`;
+                                        }}
+                                        linkColor={(link: unknown) => (link as { color: string }).color}
+                                        linkWidth={(link: unknown) => {
+                                            const l = link as { value: number };
+                                            return Math.max(0.2, Math.min(3, l.value / 2));
+                                        }}
+                                        linkOpacity={0.6}
+                                        backgroundColor="rgba(0,0,0,0)"
+                                        showNavInfo={false}
+                                        onNodeClick={(node: unknown) => setSelectedSKU((node as { id: string }).id)}
+                                    />
+                                ) : (
+                                    <div className="flex items-center justify-center h-full text-muted">No graph data available</div>
+                                )}
+                            </div>
+                        </CardContent>
+                    </Card>
                 </>
             )}
 
@@ -441,7 +457,7 @@ export default function GNN3DVisualizer() {
                                                 value={searchFilter}
                                                 onChange={(e) => setSearchFilter(e.target.value)}
                                                 placeholder="SKU or name..."
-                                                className="w-full bg-surface-elevated border border-white/10 rounded-lg py-2 pl-9 pr-3 text-sm focus:ring-1 focus:ring-info outline-none"
+                                                className="w-full !bg-[#1a1a24] !text-[#e8e8f0] border border-white/10 rounded-lg py-2 pl-9 pr-3 text-sm focus:ring-1 focus:ring-info outline-none shadow-inner"
                                             />
                                         </div>
                                     </div>
@@ -450,7 +466,7 @@ export default function GNN3DVisualizer() {
                                         <select
                                             value={categoryFilter}
                                             onChange={(e) => setCategoryFilter(e.target.value)}
-                                            className="w-full bg-surface-elevated border border-white/10 rounded-lg py-2 px-3 text-sm focus:ring-1 focus:ring-info outline-none"
+                                            className="w-full !bg-[#1a1a24] !text-[#e8e8f0] border border-white/10 rounded-lg py-2 px-3 text-sm focus:ring-1 focus:ring-info outline-none"
                                         >
                                             <option value="all">All Categories</option>
                                             {Object.keys(CATEGORY_NAMES).map(code => (

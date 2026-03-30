@@ -57,8 +57,8 @@ def bias(y, yhat):
 
 
 def forecast_accuracy(y, yhat):
-    """100 - MAPE for easier interpretation"""
-    return 100 - mape(y, yhat)
+    """100 - WAPE for business-facing portfolio interpretation"""
+    return 100 - wape(y, yhat)
 
 
 # ==========================================
@@ -425,7 +425,7 @@ def main():
                     'use_gnn': USE_GNN,
                     'model_type': MODEL_TYPE
                 }
-            }, 'models/best_tft_gnn_v2.pt')
+            }, 'models/best_tft_gnn_v2_2.pt')
             print(f"   ✅ New best model! WAPE: {best_wape:.2f}%")
         
         # Early stopping check
@@ -441,7 +441,7 @@ def main():
     print(f"Best WAPE: {best_wape:.2f}% at epoch {best_epoch}")
     
     # Load best model
-    checkpoint = torch.load('models/best_tft_gnn_v2.pt', weights_only=False)
+    checkpoint = torch.load('models/best_tft_gnn_v2_2.pt', weights_only=False)
     model.load_state_dict(checkpoint['model_state_dict'])
     
     # Final validation WITH GNN
@@ -488,7 +488,7 @@ def main():
         print("   ⚠️  Under-forecasting bias (stockout risk)")
     
     # Save results
-    with open('models/tft_gnn_v2_results.json', 'w') as f:
+    with open('models/tft_gnn_v2_2_results.json', 'w') as f:
         json.dump({
             'final_metrics': {k: float(v) if not np.isnan(v) else None 
                             for k, v in final_metrics.items()},
@@ -500,7 +500,7 @@ def main():
         }, f, indent=2)
     
     print("\n" + "="*80)
-    print("✅ Results saved to models/tft_gnn_v2_results.json")
+    print("\n✅ Results saved to models/tft_gnn_v2_2_results.json")
     
     return model, final_metrics
 

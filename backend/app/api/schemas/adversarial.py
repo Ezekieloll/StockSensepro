@@ -22,6 +22,16 @@ class ScenarioInfo(BaseModel):
 class RunAITestRequest(BaseModel):
     """Request to run AI adversarial testing"""
     scenario_ids: Optional[List[str]] = None  # If None, runs all scenarios
+    category_scoped: bool = True
+    custom_scenarios: Optional[List[ScenarioInfo]] = None
+
+
+class ScenarioActivityRequest(BaseModel):
+    """Request for logging scenario editor activity."""
+    action: str  # created | updated | deleted
+    scenario_id: str
+    scenario_name: str
+    details: Optional[dict] = None
     
 
 class ScenarioResult(BaseModel):
@@ -38,6 +48,7 @@ class ScenarioResult(BaseModel):
 class AITestResponse(BaseModel):
     """Response from AI adversarial testing"""
     status: str
+    scope_mode: str
     scenarios_tested: int
     total_records: int
     results_by_scenario: dict  # scenario_id -> ScenarioResult

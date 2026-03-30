@@ -6,6 +6,11 @@ import { ChartIcon, DatabaseIcon, TrendingUpIcon } from '@/components/ui/Icons';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
+const getAuthHeaders = (): HeadersInit => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    return token ? { Authorization: `Bearer ${token}` } : {};
+};
+
 interface AccuracySummary {
     overall: {
         mae: number;
@@ -41,7 +46,9 @@ export default function AccuracySummaryCard() {
     const fetchSummary = async () => {
         setLoading(true);
         try {
-            const response = await fetch(`${API_URL}/analytics/accuracy-summary`);
+            const response = await fetch(`${API_URL}/analytics/accuracy-summary`, {
+                headers: getAuthHeaders(),
+            });
             if (response.ok) {
                 const data = await response.json();
                 setSummary(data);

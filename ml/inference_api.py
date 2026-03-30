@@ -19,6 +19,7 @@ from pathlib import Path
 import torch
 import pandas as pd
 import numpy as np
+import json
 
 # Import model classes
 from forecasting.tft_gnn_wrapper import TFTWithGNNWrapper
@@ -80,6 +81,7 @@ class MLModelManager:
         self.idx_to_sku = {}
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model_loaded = False
+        self.model_confidence = 0.5  # Updated from real validation metrics
         self.product_catalog = {}
         
         # Load model on startup
@@ -123,13 +125,38 @@ class MLModelManager:
             self.model_loaded = True
             print(f"✅ Model loaded successfully on {self.device}")
             print(f"   Config: {config}")
+            
+            # Load real confidence from validation results
+            self._load_model_confidence()
             return True
             
         except Exception as e:
             print(f"❌ Failed to load model: {e}")
             self.model_loaded = False
             return False
-    
+
+    def _load_model_confidence(self):
+        """Compute confidence from saved validation metrics (WAPE-based)."""
+        results_paths = [
+            "models/tft_gnn_final_results.json",
+            "models/tft_gnn_v2_results.json",
+        ]
+        for path in results_paths:
+            if Path(path).exists():
+                try:
+                    with open(path) as f:
+                        results = json.load(f)
+                    metrics = results.get("final_metrics", {})
+                    wape = metrics.get("wape")
+                    if wape is not None:
+                        # confidence = 1 - WAPE/100, clamped to [0, 1]
+                        self.model_confidence = round(max(0.0, min(1.0, 1 - wape / 100)), 4)
+                        print(f"✅ Model confidence set to {self.model_confidence:.1%} (WAPE={wape:.2f}%)")
+                        return
+                except Exception as e:
+                    print(f"⚠️ Could not read results file {path}: {e}")
+        print("⚠️ No results file found — confidence defaulting to 0.5")
+
     def load_product_catalog(self):
         """Load product names from catalog."""
         try:
@@ -220,7 +247,7 @@ class MLModelManager:
                         "store_id": store,
                         "date": forecast_date.isoformat(),
                         "predicted_demand": predicted,
-                        "confidence": 0.85 if self.model_loaded else 0.5
+                        "confidence": self.model_confidence if self.model_loaded else 0.5
                     })
         
         return forecasts

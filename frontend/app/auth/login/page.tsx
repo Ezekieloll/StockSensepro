@@ -40,12 +40,16 @@ export default function LoginPage() {
                 password: formData.password
             });
 
-            // Store user data (backend returns user info directly)
+            // Persist auth state for subsequent protected API calls.
+            localStorage.setItem('token', response.access_token);
+
+            // Store user data
             localStorage.setItem('user', JSON.stringify({
-                id: response.id,
-                name: response.name,
-                email: response.email,
-                role: response.role.toLowerCase()
+                id: response.user.id,
+                name: response.user.name,
+                email: response.user.email,
+                role: response.user.role.toLowerCase(),
+                store_id: response.user.store_id
             }));
 
             // Redirect to dashboard

@@ -52,42 +52,33 @@ interface ModelMetricsResponse {
     total_models: number;
 }
 
+interface ForecastAnomaly {
+    product_id: string;
+    avg_demand: number;
+    mape: number;
+    wape: number;
+    reasons: string[];
+    severity_score: number;
+}
+
+interface AnomaliesSummaryResponse {
+    total_products: number;
+    anomaly_count: number;
+    thresholds: {
+        percentile: number;
+        mape: number;
+        wape: number;
+    };
+    top_anomalies: ForecastAnomaly[];
+    generated_at: string;
+}
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
-// Mock data for analyst view (fallback)
-const mockModelMetrics = [
-    { model: 'TFT v2.1', type: 'Temporal Fusion Transformer', mae: 4.23, mape: 8.5, wape: 7.2, status: 'active', trained_at: '2026-01-20', epochs: 50 },
-    { model: 'LSTM v1.8', type: 'LSTM', mae: 5.67, mape: 11.2, wape: 9.8, status: 'standby', trained_at: '2026-01-15', epochs: 40 },
-    { model: 'LSTM+GNN v1.2', type: 'LSTM+GNN', mae: 4.89, mape: 9.8, wape: 8.4, status: 'standby', trained_at: '2026-01-10', epochs: 45 },
-    { model: 'Transformer v1.0', type: 'Transformer', mae: 6.12, mape: 12.5, wape: 10.2, status: 'archived', trained_at: '2025-12-28', epochs: 30 },
-];
-
-const mockForecastAccuracy = [
-    { sku: 'SKU_001', name: 'Organic Milk 1L', predicted: 245, actual: 238, error: 2.9, trend: 'up' },
-    { sku: 'SKU_015', name: 'Whole Wheat Bread', predicted: 180, actual: 195, error: 7.7, trend: 'down' },
-    { sku: 'SKU_042', name: 'Fresh Eggs 12pk', predicted: 312, actual: 298, error: 4.7, trend: 'up' },
-    { sku: 'SKU_078', name: 'Orange Juice 2L', predicted: 156, actual: 162, error: 3.7, trend: 'down' },
-    { sku: 'SKU_103', name: 'Greek Yogurt', predicted: 88, actual: 92, error: 4.3, trend: 'up' },
-];
-
-const mockAnomalies = [
-    { id: 1, sku: 'SKU_156', type: 'Demand Spike', description: 'Unusual 3x demand increase detected', date: 'Jan 15', status: 'new' },
-    { id: 2, sku: 'SKU_089', type: 'Pattern Break', description: 'Weekly seasonality pattern disrupted', date: 'Jan 14', status: 'investigating' },
-    { id: 3, sku: 'SKU_201', type: 'Forecast Drift', description: 'Model consistently over-predicting by 15%', date: 'Jan 13', status: 'resolved' },
-];
-
-const mockGNNInsights = [
-    { sku: 'SKU_001', influencedBy: ['SKU_015', 'SKU_042'], influenceStrength: 0.82, category: 'Dairy' },
-    { sku: 'SKU_015', influencedBy: ['SKU_001', 'SKU_078'], influenceStrength: 0.65, category: 'Bakery' },
-    { sku: 'SKU_042', influencedBy: ['SKU_001', 'SKU_103'], influenceStrength: 0.78, category: 'Dairy' },
-];
-
-const mockSimulationResults = [
-    { scenario: 'Baseline', demand: 1245, risk: 'low', confidence: 95 },
-    { scenario: 'Demand Spike +50%', demand: 1868, risk: 'medium', confidence: 88 },
-    { scenario: 'Holiday Season', demand: 2156, risk: 'high', confidence: 82 },
-    { scenario: 'Weather Shock', demand: 1456, risk: 'medium', confidence: 85 },
-];
+const getAuthHeaders = (): HeadersInit => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    return token ? { Authorization: `Bearer ${token}` } : {};
+};
 
 export default function AnalystDashboard() {
     const router = useRouter();
@@ -95,15 +86,20 @@ export default function AnalystDashboard() {
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState('overview');
     const [selectedModel, setSelectedModel] = useState('TFT v2.1');
-    const [modelMetrics, setModelMetrics] = useState<ModelMetric[]>(mockModelMetrics);
+    const [modelMetrics, setModelMetrics] = useState<ModelMetric[]>([]);
     const [metricsLoading, setMetricsLoading] = useState(false);
     const [showExportMenu, setShowExportMenu] = useState(false);
     const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' | 'warning' | 'info' } | null>(null);
-    const [simulationResults, setSimulationResults] = useState(mockSimulationResults);
+    const [simulationResults, setSimulationResults] = useState<any[]>([]);
     const [simulationLoading, setSimulationLoading] = useState(false);
     const [customScenario, setCustomScenario] = useState('');
     const [showCustomInput, setShowCustomInput] = useState(false);
     const [isChatOpen, setIsChatOpen] = useState(false);
+    const [gnnStats, setGnnStats] = useState<{ nodes: number; edges: number } | null>(null);
+    const [stockoutCount, setStockoutCount] = useState<number | null>(null);
+    const [anomalies, setAnomalies] = useState<AnomaliesSummaryResponse | null>(null);
+    const [anomaliesLoading, setAnomaliesLoading] = useState(false);
+    const [showAllAnomalies, setShowAllAnomalies] = useState(false);
 
     useEffect(() => {
         const userData = localStorage.getItem('user');
@@ -122,9 +118,12 @@ export default function AnalystDashboard() {
         }
         setUser(parsed);
         setLoading(false);
-        
-        // Fetch model metrics
+
+        // Fetch model metrics and GNN stats
         fetchModelMetrics();
+        fetchGNNStats();
+        fetchStockoutCount();
+        fetchAnomaliesSummary();
     }, [router]);
 
     // Close export menu when clicking outside
@@ -142,10 +141,42 @@ export default function AnalystDashboard() {
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, [showExportMenu]);
 
+    const fetchStockoutCount = async () => {
+        try {
+            const response = await fetch(`${API_URL}/adversarial/?high_risk_only=true`, {
+                headers: getAuthHeaders(),
+            });
+            if (response.ok) {
+                const data = await response.json();
+                // Deduplicate by SKU — count unique SKUs at risk
+                const uniqueSkus = new Set(data.map((r: any) => r.sku));
+                setStockoutCount(uniqueSkus.size);
+            }
+        } catch (error) {
+            console.error('Error fetching stockout count:', error);
+        }
+    };
+
+    const fetchGNNStats = async () => {
+        try {
+            const response = await fetch(`${API_URL}/gnn/graph-statistics`, {
+                headers: getAuthHeaders(),
+            });
+            if (response.ok) {
+                const data = await response.json();
+                setGnnStats({ nodes: data.nodes, edges: data.edges });
+            }
+        } catch (error) {
+            console.error('Error fetching GNN stats:', error);
+        }
+    };
+
     const fetchModelMetrics = async () => {
         setMetricsLoading(true);
         try {
-            const response = await fetch(`${API_URL}/analytics/model-metrics`);
+            const response = await fetch(`${API_URL}/analytics/model-metrics`, {
+                headers: getAuthHeaders(),
+            });
             if (response.ok) {
                 const data: ModelMetricsResponse = await response.json();
                 setModelMetrics(data.models);
@@ -161,10 +192,29 @@ export default function AnalystDashboard() {
         }
     };
 
+    const fetchAnomaliesSummary = async () => {
+        setAnomaliesLoading(true);
+        try {
+            const response = await fetch(`${API_URL}/analytics/anomalies-summary?top_k=500&percentile_threshold=0.8`, {
+                headers: getAuthHeaders(),
+            });
+            if (response.ok) {
+                const data: AnomaliesSummaryResponse = await response.json();
+                setAnomalies(data);
+            }
+        } catch (error) {
+            console.error('Error fetching anomalies summary:', error);
+        } finally {
+            setAnomaliesLoading(false);
+        }
+    };
+
     const handleExportReport = async () => {
         try {
             // Download full analysis report
-            const response = await fetch(`${API_URL}/analytics/export/full-analysis`);
+            const response = await fetch(`${API_URL}/analytics/export/full-analysis`, {
+                headers: getAuthHeaders(),
+            });
             if (response.ok) {
                 const blob = await response.blob();
                 const url = window.URL.createObjectURL(blob);
@@ -188,7 +238,9 @@ export default function AnalystDashboard() {
 
     const handleExportModelPerformance = async () => {
         try {
-            const response = await fetch(`${API_URL}/analytics/export/model-performance`);
+            const response = await fetch(`${API_URL}/analytics/export/model-performance`, {
+                headers: getAuthHeaders(),
+            });
             if (response.ok) {
                 const blob = await response.blob();
                 const url = window.URL.createObjectURL(blob);
@@ -210,7 +262,9 @@ export default function AnalystDashboard() {
 
     const handleExportVolumeStats = async () => {
         try {
-            const response = await fetch(`${API_URL}/analytics/export/sku-volume-stats`);
+            const response = await fetch(`${API_URL}/analytics/export/sku-volume-stats`, {
+                headers: getAuthHeaders(),
+            });
             if (response.ok) {
                 const blob = await response.blob();
                 const url = window.URL.createObjectURL(blob);
@@ -233,23 +287,25 @@ export default function AnalystDashboard() {
     const runSimulation = async () => {
         setSimulationLoading(true);
         try {
+            // POST /simulations/run with no body → backend returns default scenarios using live DB data
             const response = await fetch(`${API_URL}/simulations/run`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    ...getAuthHeaders(),
                 },
+                body: JSON.stringify([]),
             });
-            
             if (response.ok) {
                 const data = await response.json();
                 setSimulationResults(data);
                 setNotification({ message: 'Simulation completed successfully', type: 'success' });
             } else {
-                setNotification({ message: 'Simulation failed. Using cached results.', type: 'warning' });
+                setNotification({ message: 'Simulation failed. Please try again.', type: 'warning' });
             }
         } catch (error) {
             console.error('Error running simulation:', error);
-            setNotification({ message: 'Simulation error. Using cached results.', type: 'warning' });
+            setNotification({ message: 'Simulation error. Check that the backend is running.', type: 'warning' });
         } finally {
             setSimulationLoading(false);
         }
@@ -260,28 +316,24 @@ export default function AnalystDashboard() {
             setNotification({ message: 'Please enter a scenario description', type: 'warning' });
             return;
         }
-        
         setSimulationLoading(true);
         try {
-            const response = await fetch(`${API_URL}/simulations/custom?scenario_text=${encodeURIComponent(customScenario)}`, {
-                method: 'POST',
-            });
-            
+            // POST /simulations/custom?scenario_text=... → AI + GNN powered analysis
+            const response = await fetch(
+                `${API_URL}/simulations/custom?scenario_text=${encodeURIComponent(customScenario)}`,
+                {
+                    method: 'POST',
+                    headers: getAuthHeaders(),
+                }
+            );
             if (response.ok) {
                 const result = await response.json();
-                
-                // Add AI result to the simulation results
-                setSimulationResults(prev => [
-                    result,
-                    ...prev.slice(0, 3)  // Keep top 3 default scenarios
-                ]);
-                
-                const reasoning = result.ai_reasoning ? ` (${result.ai_reasoning})` : '';
-                setNotification({ 
-                    message: `AI analysis complete: ${result.demand.toLocaleString()} units projected${reasoning}`, 
-                    type: 'success' 
+                setSimulationResults(prev => [result, ...prev.slice(0, 3)]);
+                const reasoning = result.ai_reasoning ? ` — ${result.ai_reasoning}` : '';
+                setNotification({
+                    message: `AI analysis complete: ${result.demand.toLocaleString()} units projected${reasoning}`,
+                    type: 'success',
                 });
-                
                 setCustomScenario('');
                 setShowCustomInput(false);
             } else {
@@ -374,7 +426,7 @@ export default function AnalystDashboard() {
                                 <input
                                     type="text"
                                     placeholder="Search forecasts..."
-                                    className="bg-surface-elevated border border-white/10 rounded-full py-1.5 pl-9 pr-4 text-xs focus:ring-1 focus:ring-info outline-none transition-all w-40 focus:w-56"
+                                    className="!bg-[#1a1a24] !text-[#e8e8f0] border border-white/10 rounded-full py-1.5 pl-9 pr-4 text-xs focus:ring-1 focus:ring-info outline-none transition-all w-40 focus:w-56 shadow-inner"
                                 />
                             </div>
                             <button className="p-2 hover:bg-white/5 rounded-lg transition-colors relative">
@@ -419,9 +471,9 @@ export default function AnalystDashboard() {
                             Refresh Data
                         </Button>
                         <div className="relative export-menu-container">
-                            <Button 
-                                variant="primary" 
-                                size="sm" 
+                            <Button
+                                variant="primary"
+                                size="sm"
                                 onClick={() => setShowExportMenu(!showExportMenu)}
                             >
                                 <DatabaseIcon size={14} />
@@ -521,9 +573,13 @@ export default function AnalystDashboard() {
                             <Card glass className="group hover:border-warning/30 transition-all">
                                 <div className="flex items-center justify-between">
                                     <div>
-                                        <p className="text-xs text-muted uppercase tracking-wider">Anomalies</p>
-                                        <h3 className="text-2xl font-bold mt-1 text-warning">3</h3>
-                                        <p className="text-xs text-muted mt-1">1 new today</p>
+                                        <p className="text-xs text-muted uppercase tracking-wider">High-Risk Stockouts</p>
+                                        <h3 className="text-2xl font-bold mt-1 text-warning">
+                                            {stockoutCount === null ? '—' : stockoutCount}
+                                        </h3>
+                                        <p className="text-xs text-muted mt-1">
+                                            {stockoutCount === null ? 'Loading...' : `${stockoutCount} SKUs at risk`}
+                                        </p>
                                     </div>
                                     <div className="w-10 h-10 bg-warning/10 rounded-lg flex items-center justify-center text-warning">
                                         <AlertIcon size={20} />
@@ -535,8 +591,8 @@ export default function AnalystDashboard() {
                                 <div className="flex items-center justify-between">
                                     <div>
                                         <p className="text-xs text-muted uppercase tracking-wider">GNN Nodes</p>
-                                        <h3 className="text-2xl font-bold mt-1">248</h3>
-                                        <p className="text-xs text-muted mt-1">1,234 edges</p>
+                                        <h3 className="text-2xl font-bold mt-1">{gnnStats ? gnnStats.nodes.toLocaleString() : '—'}</h3>
+                                        <p className="text-xs text-muted mt-1">{gnnStats ? `${gnnStats.edges.toLocaleString()} edges` : 'Loading...'}</p>
                                     </div>
                                     <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center text-primary">
                                         <DatabaseIcon size={20} />
@@ -612,28 +668,60 @@ export default function AnalystDashboard() {
                                             <AlertIcon size={18} className="text-warning" />
                                             Detected Anomalies
                                         </CardTitle>
+                                        {anomalies && anomalies.top_anomalies.length > 3 && (
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={() => setShowAllAnomalies((prev) => !prev)}
+                                            >
+                                                {showAllAnomalies ? 'Show Top 3' : 'View All'}
+                                            </Button>
+                                        )}
                                     </div>
                                 </CardHeader>
                                 <CardContent>
-                                    <div className="space-y-3">
-                                        {mockAnomalies.map((anomaly) => (
-                                            <div
-                                                key={anomaly.id}
-                                                className="p-3 bg-white/5 rounded-lg border border-white/5 hover:border-warning/30 transition-all cursor-pointer"
-                                            >
-                                                <div className="flex items-start justify-between mb-2">
-                                                    <span className="font-mono text-xs text-muted">{anomaly.sku}</span>
-                                                    {getStatusBadge(anomaly.status)}
+                                    {anomaliesLoading ? (
+                                        <div className="text-center py-8 text-muted">
+                                            <RefreshIcon size={24} className="mx-auto mb-2 animate-spin" />
+                                            Loading anomalies...
+                                        </div>
+                                    ) : !anomalies ? (
+                                        <div className="text-center py-8 text-muted text-sm">No anomaly data available.</div>
+                                    ) : (
+                                        <div className="space-y-4">
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div className="p-3 rounded-lg bg-warning/10 border border-warning/30">
+                                                    <p className="text-xs text-muted uppercase tracking-wider">Flagged SKUs</p>
+                                                    <p className="text-xl font-bold text-warning mt-1">{anomalies.anomaly_count}</p>
                                                 </div>
-                                                <p className="text-sm font-medium text-warning">{anomaly.type}</p>
-                                                <p className="text-xs text-muted mt-1">{anomaly.description}</p>
-                                                <p className="text-xs text-muted mt-2">{anomaly.date}</p>
+                                                <div className="p-3 rounded-lg bg-info/10 border border-info/30">
+                                                    <p className="text-xs text-muted uppercase tracking-wider">Threshold</p>
+                                                    <p className="text-xl font-bold text-info mt-1">P{Math.round(anomalies.thresholds.percentile * 100)}</p>
+                                                </div>
                                             </div>
-                                        ))}
-                                    </div>
-                                    <Button variant="ghost" className="w-full mt-4 text-xs">
-                                        Flag New Anomaly
-                                    </Button>
+
+                                            <div className="text-xs text-muted">
+                                                MAPE &gt; {anomalies.thresholds.mape.toFixed(1)} or WAPE &gt; {anomalies.thresholds.wape.toFixed(1)}
+                                            </div>
+
+                                            <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                                                {(showAllAnomalies ? anomalies.top_anomalies : anomalies.top_anomalies.slice(0, 3)).length === 0 ? (
+                                                    <div className="text-sm text-success">No SKUs exceed anomaly thresholds.</div>
+                                                ) : (showAllAnomalies ? anomalies.top_anomalies : anomalies.top_anomalies.slice(0, 3)).map((item) => (
+                                                    <div key={item.product_id} className="p-3 rounded-lg bg-white/5 border border-white/10">
+                                                        <div className="flex items-center justify-between gap-2">
+                                                            <span className="text-sm font-medium font-mono">{item.product_id}</span>
+                                                            <div className="flex items-center gap-2 text-xs">
+                                                                <span className="text-warning">MAPE {item.mape.toFixed(1)}%</span>
+                                                                <span className="text-muted">|</span>
+                                                                <span className="text-info">WAPE {item.wape.toFixed(1)}%</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
                                 </CardContent>
                             </Card>
                         </div>
@@ -649,197 +737,96 @@ export default function AnalystDashboard() {
                             {/* Accuracy Summary - Takes 1 column */}
                             <AccuracySummaryCard />
 
-                            {/* Forecast Accuracy - Takes 2 columns */}
+                            {/* What-If Simulation - Takes 2 columns */}
                             <div className="lg:col-span-2">
                                 <Card glass>
                                     <CardHeader>
                                         <div className="flex items-center justify-between">
                                             <div>
                                                 <CardTitle className="flex items-center gap-2 text-lg">
-                                                    <ChartIcon size={18} className="text-success" />
-                                                    Forecast Accuracy Review
+                                                    <RefreshIcon size={18} className="text-primary" />
+                                                    What-If Simulation
                                                 </CardTitle>
-                                                <CardDescription>Compare predictions vs actuals</CardDescription>
+                                                <CardDescription>Test different demand scenarios</CardDescription>
                                             </div>
-                                            <Button variant="ghost" size="sm">View All</Button>
+                                            <Button variant="primary" size="sm" onClick={runSimulation} disabled={simulationLoading}>
+                                                <RefreshIcon size={14} className={simulationLoading ? 'animate-spin' : ''} />
+                                                {simulationLoading ? 'Running...' : 'Run Simulation'}
+                                            </Button>
                                         </div>
                                     </CardHeader>
                                     <CardContent>
-                                        <Table>
-                                            <TableHeader>
-                                                <TableRow>
-                                                    <TableHead>Product</TableHead>
-                                                    <TableHead className="text-right">Predicted</TableHead>
-                                                    <TableHead className="text-right">Actual</TableHead>
-                                                    <TableHead className="text-right">Error %</TableHead>
-                                                </TableRow>
-                                            </TableHeader>
-                                            <TableBody>
-                                                {mockForecastAccuracy.map((item) => (
-                                                    <TableRow key={item.sku} className="hover:bg-white/5">
-                                                        <TableCell>
-                                                            <div>
-                                                                <div className="font-medium text-sm">{item.name}</div>
-                                                                <div className="text-xs text-muted font-mono">{item.sku}</div>
+                                        {/* Custom scenario input */}
+                                        <div className="mb-4">
+                                            {showCustomInput ? (
+                                                <div className="flex gap-2">
+                                                    <input
+                                                        type="text"
+                                                        value={customScenario}
+                                                        onChange={(e) => setCustomScenario(e.target.value)}
+                                                        onKeyDown={(e) => e.key === 'Enter' && runCustomScenario()}
+                                                        placeholder="e.g. Major snowstorm next week..."
+                                                        className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                                                        autoFocus
+                                                    />
+                                                    <Button variant="primary" size="sm" onClick={runCustomScenario} disabled={simulationLoading}>Analyze</Button>
+                                                    <Button variant="ghost" size="sm" onClick={() => { setShowCustomInput(false); setCustomScenario(''); }}>Cancel</Button>
+                                                </div>
+                                            ) : (
+                                                <div className="p-3 bg-info/10 border border-info/30 rounded-lg flex items-center justify-between">
+                                                    <p className="text-sm text-info flex items-center gap-2">
+                                                        <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                                                        </svg>
+                                                        Use the chat assistant or run a custom AI scenario
+                                                    </p>
+                                                    <Button variant="ghost" size="sm" onClick={() => setShowCustomInput(true)}>Custom</Button>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Results */}
+                                        {simulationResults.length === 0 ? (
+                                            <div className="text-center py-8 text-muted">
+                                                <RefreshIcon size={32} className="mx-auto mb-2 opacity-30" />
+                                                <p className="text-sm">Click <span className="text-foreground font-medium">Run Simulation</span> to load live scenarios from the database</p>
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-3">
+                                                {simulationResults.map((sim: any, idx: number) => (
+                                                    <div key={idx} className={`p-4 rounded-lg border ${sim.ai_reasoning ? 'bg-primary/5 border-primary/30' : 'bg-white/5 border-white/5'}`}>
+                                                        <div className="flex items-start justify-between mb-2">
+                                                            <div className="flex-1">
+                                                                <div className="flex items-center gap-2">
+                                                                    <div className="font-medium text-sm">{sim.scenario}</div>
+                                                                    {sim.ai_reasoning && (
+                                                                        <span className="px-2 py-0.5 bg-primary/20 text-primary text-xs rounded-full">AI</span>
+                                                                    )}
+                                                                </div>
+                                                                {sim.ai_reasoning && (
+                                                                    <div className="text-xs text-muted mt-1 italic">{sim.ai_reasoning}</div>
+                                                                )}
+                                                                <div className="text-xs text-muted mt-1">Confidence: {sim.confidence}%</div>
                                                             </div>
-                                                        </TableCell>
-                                                        <TableCell className="text-right font-mono">{item.predicted}</TableCell>
-                                                        <TableCell className="text-right font-mono">{item.actual}</TableCell>
-                                                        <TableCell className="text-right">
-                                                            <span className={`flex items-center justify-end gap-1 ${item.error > 5 ? 'text-warning' : 'text-success'}`}>
-                                                                {item.trend === 'up' ? <TrendingUpIcon size={12} /> : <TrendingDownIcon size={12} />}
-                                                                {item.error}%
-                                                            </span>
-                                                        </TableCell>
-                                                    </TableRow>
+                                                            <div className="text-right ml-4">
+                                                                <div className="font-bold text-lg">{sim.demand.toLocaleString()}</div>
+                                                                <div className="mt-1">{getRiskBadge(sim.risk)}</div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
                                                 ))}
-                                            </TableBody>
-                                        </Table>
+                                            </div>
+                                        )}
                                     </CardContent>
                                 </Card>
                             </div>
                         </div>
-
-                        {/* Fourth Row */}
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-                            {/* What-If Simulation */}
-                            <Card glass>
-                                <CardHeader>
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            <CardTitle className="flex items-center gap-2 text-lg">
-                                                <RefreshIcon size={18} className="text-primary" />
-                                                What-If Simulation
-                                            </CardTitle>
-                                            <CardDescription>Test different demand scenarios</CardDescription>
-                                        </div>
-                                        <Button variant="primary" size="sm" onClick={runSimulation} disabled={simulationLoading}>
-                                            <RefreshIcon size={14} className={simulationLoading ? 'animate-spin' : ''} />
-                                            {simulationLoading ? 'Running...' : 'Run Simulation'}
-                                        </Button>
-                                    </div>
-                                </CardHeader>
-                                <CardContent>
-                                    {/* Info message about chat */}
-                                    <div className="mb-4 p-3 bg-info/10 border border-info/30 rounded-lg">
-                                        <p className="text-sm text-info flex items-center gap-2">
-                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                                            </svg>
-                                            Use the chat assistant (bottom right) to analyze custom scenarios!
-                                        </p>
-                                    </div>
-
-                                    {/* Simulation Results */}
-                                    <div className="space-y-3">
-                                        {simulationResults.map((sim: any, idx) => (
-                                            <div key={idx} className={`p-4 rounded-lg border ${sim.ai_reasoning ? 'bg-primary/5 border-primary/30' : 'bg-white/5 border-white/5'}`}>
-                                                <div className="flex items-start justify-between mb-2">
-                                                    <div className="flex-1">
-                                                        <div className="flex items-center gap-2">
-                                                            <div className="font-medium text-sm">{sim.scenario}</div>
-                                                            {sim.ai_reasoning && (
-                                                                <span className="px-2 py-0.5 bg-primary/20 text-primary text-xs rounded-full">AI</span>
-                                                            )}
-                                                        </div>
-                                                        {sim.ai_reasoning && (
-                                                            <div className="text-xs text-muted mt-1 italic">{sim.ai_reasoning}</div>
-                                                        )}
-                                                        <div className="text-xs text-muted mt-1">Confidence: {sim.confidence}%</div>
-                                                    </div>
-                                                    <div className="text-right ml-4">
-                                                        <div className="font-bold text-lg">{sim.demand.toLocaleString()}</div>
-                                                        <div className="mt-1">{getRiskBadge(sim.risk)}</div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </CardContent>
-                            </Card>
-
-                            {/* GNN Insights Preview */}
-                            <Card glass>
-                                <CardHeader>
-                                    <CardTitle className="flex items-center gap-2 text-lg">
-                                        <DatabaseIcon size={18} className="text-info" />
-                                        GNN Insights Sample
-                                    </CardTitle>
-                                    <CardDescription>Product relationship preview</CardDescription>
-                                </CardHeader>
-                                <CardContent>
-                                    <div className="space-y-3">
-                                        {mockGNNInsights.slice(0, 2).map((insight, idx) => (
-                                            <div key={idx} className="p-3 bg-white/5 rounded-lg border border-white/5">
-                                                <div className="flex items-center justify-between mb-2">
-                                                    <span className="font-mono font-bold text-primary text-sm">{insight.sku}</span>
-                                                    <Badge variant="default">{insight.category}</Badge>
-                                                </div>
-                                                <p className="text-xs text-muted mb-2">Influenced by: {insight.influencedBy.join(', ')}</p>
-                                                <div className="flex items-center justify-between text-sm">
-                                                    <span className="text-muted">Strength</span>
-                                                    <span className="font-bold text-info">{(insight.influenceStrength * 100).toFixed(0)}%</span>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                    <Button variant="ghost" className="w-full mt-3 text-xs">View Full Graph</Button>
-                                </CardContent>
-                            </Card>
-                        </div>
-
-                        {/* GNN Insights */}
-                        <Card glass>
-                            <CardHeader>
-                                <div className="flex items-center justify-between">
-                                    <div>
-                                        <CardTitle className="flex items-center gap-2 text-lg">
-                                            <DatabaseIcon size={18} className="text-primary" />
-                                            GNN Product Influence Graph
-                                        </CardTitle>
-                                        <CardDescription>Understand product relationships and cross-influences</CardDescription>
-                                    </div>
-                                    <Button variant="ghost" size="sm">View Full Graph</Button>
-                                </div>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                    {mockGNNInsights.map((insight, idx) => (
-                                        <div key={idx} className="p-4 bg-white/5 rounded-lg border border-white/5 hover:border-primary/30 transition-all">
-                                            <div className="flex items-center justify-between mb-3">
-                                                <span className="font-mono font-bold text-primary">{insight.sku}</span>
-                                                <Badge variant="default">{insight.category}</Badge>
-                                            </div>
-                                            <p className="text-xs text-muted mb-2">Influenced by:</p>
-                                            <div className="flex flex-wrap gap-2 mb-3">
-                                                {insight.influencedBy.map((sku) => (
-                                                    <span key={sku} className="px-2 py-1 bg-surface-elevated rounded text-xs font-mono">
-                                                        {sku}
-                                                    </span>
-                                                ))}
-                                            </div>
-                                            <div className="flex items-center justify-between">
-                                                <span className="text-xs text-muted">Influence Strength</span>
-                                                <span className="text-sm font-bold text-info">{(insight.influenceStrength * 100).toFixed(0)}%</span>
-                                            </div>
-                                            {/* Influence bar */}
-                                            <div className="mt-2 h-2 bg-surface-elevated rounded-full overflow-hidden">
-                                                <div
-                                                    className="h-full bg-gradient-to-r from-info to-primary rounded-full transition-all"
-                                                    style={{ width: `${insight.influenceStrength * 100}%` }}
-                                                ></div>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </CardContent>
-                        </Card>
                     </>
                 )}
 
                 {/* LLM Assistant Floating Button */}
                 <div className="fixed bottom-6 right-6 z-40">
-                    <button 
+                    <button
                         onClick={() => setIsChatOpen(!isChatOpen)}
                         className="w-14 h-14 bg-gradient-to-r from-cyan-600 to-blue-600 rounded-full shadow-lg shadow-info/30 flex items-center justify-center hover:scale-110 transition-transform group"
                     >
@@ -854,8 +841,8 @@ export default function AnalystDashboard() {
             </div>
 
             {/* Chat Panel */}
-            <ChatPanel 
-                isOpen={isChatOpen} 
+            <ChatPanel
+                isOpen={isChatOpen}
                 onClose={() => setIsChatOpen(false)}
                 onScenarioAnalyzed={handleChatScenario}
             />

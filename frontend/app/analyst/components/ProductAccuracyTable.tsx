@@ -2,11 +2,15 @@
 
 import { useState, useEffect } from 'react';
 import Card, { CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/Card';
-import Badge from '@/components/ui/Badge';
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/Table';
 import { CheckIcon, RefreshIcon } from '@/components/ui/Icons';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
+const getAuthHeaders = (): HeadersInit => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    return token ? { Authorization: `Bearer ${token}` } : {};
+};
 
 interface ProductAccuracy {
     product_id: string;
@@ -33,7 +37,9 @@ export default function ProductAccuracyTable() {
     const fetchProductAccuracy = useCallback(async () => {
         setLoading(true);
         try {
-            const response = await fetch(`${API_URL}/analytics/product-accuracy?limit=${limit}&sort_by=${sortBy}`);
+            const response = await fetch(`${API_URL}/analytics/product-accuracy?limit=${limit}&sort_by=${sortBy}`, {
+                headers: getAuthHeaders(),
+            });
             if (response.ok) {
                 const data: ProductAccuracyResponse = await response.json();
                 setProducts(data.products);
@@ -70,7 +76,7 @@ export default function ProductAccuracyTable() {
                         <select
                             value={sortBy}
                             onChange={(e) => setSortBy(e.target.value as 'mae' | 'mape' | 'wape')}
-                            className="bg-surface-elevated border border-white/10 rounded px-2 py-1 text-xs"
+                            className="!bg-[#1a1a24] !text-[#e8e8f0] border border-white/10 rounded px-2 py-1 text-xs outline-none"
                         >
                             <option value="mae">Sort by MAE</option>
                             <option value="mape">Sort by MAPE</option>
@@ -79,7 +85,7 @@ export default function ProductAccuracyTable() {
                         <select
                             value={limit}
                             onChange={(e) => setLimit(Number(e.target.value))}
-                            className="bg-surface-elevated border border-white/10 rounded px-2 py-1 text-xs"
+                            className="!bg-[#1a1a24] !text-[#e8e8f0] border border-white/10 rounded px-2 py-1 text-xs outline-none"
                         >
                             <option value="5">Top 5</option>
                             <option value="10">Top 10</option>
@@ -113,7 +119,6 @@ export default function ProductAccuracyTable() {
                                 <TableHead className="text-right">MAE</TableHead>
                                 <TableHead className="text-right">MAPE %</TableHead>
                                 <TableHead className="text-right">WAPE %</TableHead>
-                                <TableHead className="text-right">Performance</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -133,15 +138,6 @@ export default function ProductAccuracyTable() {
                                     </TableCell>
                                     <TableCell className="text-right font-mono">
                                         {product.wape.toFixed(1)}%
-                                    </TableCell>
-                                    <TableCell className="text-right">
-                                        {product.mape < 10 ? (
-                                            <Badge variant="success">Excellent</Badge>
-                                        ) : product.mape < 20 ? (
-                                            <Badge variant="warning">Good</Badge>
-                                        ) : (
-                                            <Badge variant="error">Needs Review</Badge>
-                                        )}
                                     </TableCell>
                                 </TableRow>
                             ))}

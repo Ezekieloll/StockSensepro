@@ -6,6 +6,7 @@ Provides interface to local LLM for database queries, scenario generation, and c
 import subprocess
 import json
 import requests
+import os
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 
@@ -16,6 +17,7 @@ class OllamaClient:
     def __init__(self, model_name: str = "qwen2.5:7b", base_url: str = "http://localhost:11434"):
         self.model_name = model_name
         self.base_url = base_url
+        self.request_timeout = int(os.getenv("OLLAMA_REQUEST_TIMEOUT", "300"))
         self.conversation_history: List[Dict[str, str]] = []
     
     def is_available(self) -> bool:
@@ -64,7 +66,7 @@ class OllamaClient:
             response = requests.post(
                 f"{self.base_url}/api/generate",
                 json=payload,
-                timeout=120
+                timeout=self.request_timeout
             )
             
             if response.status_code == 200:
@@ -114,7 +116,7 @@ class OllamaClient:
             response = requests.post(
                 f"{self.base_url}/api/chat",
                 json=payload,
-                timeout=120
+                timeout=self.request_timeout
             )
             
             if response.status_code == 200:

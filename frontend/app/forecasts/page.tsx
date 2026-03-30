@@ -76,6 +76,11 @@ export default function ForecastsPage() {
     const [productDetail, setProductDetail] = useState<ProductDetail | null>(null);
     const [chartLoading, setChartLoading] = useState(false);
 
+    const getAuthHeaders = (): HeadersInit => {
+        const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+        return token ? { Authorization: `Bearer ${token}` } : {};
+    };
+
     useEffect(() => {
         const userData = localStorage.getItem('user');
         if (!userData) {
@@ -101,7 +106,9 @@ export default function ForecastsPage() {
 
     const fetchCategories = async () => {
         try {
-            const res = await fetch(`${API_URL}/forecast/categories`);
+            const res = await fetch(`${API_URL}/forecast/categories`, {
+                headers: getAuthHeaders(),
+            });
             if (res.ok) {
                 const data = await res.json();
                 setCategories(data);
@@ -119,7 +126,9 @@ export default function ForecastsPage() {
             const url = selectedCategory
                 ? `${API_URL}/forecast/products?category=${selectedCategory}`
                 : `${API_URL}/forecast/products`;
-            const res = await fetch(url);
+            const res = await fetch(url, {
+                headers: getAuthHeaders(),
+            });
             if (res.ok) {
                 const data = await res.json();
                 setProducts(data);
@@ -138,7 +147,10 @@ export default function ForecastsPage() {
         setChartLoading(true);
         try {
             const res = await fetch(
-                `${API_URL}/forecast/detail/${selectedProduct}?store_id=${selectedStore}&history_days=${historyDays}&forecast_days=${forecastDays}`
+                `${API_URL}/forecast/detail/${selectedProduct}?store_id=${selectedStore}&history_days=${historyDays}&forecast_days=${forecastDays}`,
+                {
+                    headers: getAuthHeaders(),
+                }
             );
             if (res.ok) {
                 const data = await res.json();
@@ -304,7 +316,7 @@ export default function ForecastsPage() {
                                         setSelectedCategory(e.target.value);
                                         setSelectedProduct('');
                                     }}
-                                    className="w-full bg-surface-elevated border border-white/10 rounded-lg py-2 px-3 text-sm focus:ring-1 focus:ring-secondary outline-none"
+                                    className="w-full !bg-[#1a1a24] !text-[#e8e8f0] border border-white/10 rounded-lg py-2 px-3 text-sm focus:ring-1 focus:ring-secondary outline-none"
                                 >
                                     <option value="">All Categories</option>
                                     {categories.map(cat => (
@@ -321,7 +333,7 @@ export default function ForecastsPage() {
                                 <select
                                     value={selectedProduct}
                                     onChange={(e) => setSelectedProduct(e.target.value)}
-                                    className="w-full bg-surface-elevated border border-white/10 rounded-lg py-2 px-3 text-sm focus:ring-1 focus:ring-secondary outline-none"
+                                    className="w-full !bg-[#1a1a24] !text-[#e8e8f0] border border-white/10 rounded-lg py-2 px-3 text-sm focus:ring-1 focus:ring-secondary outline-none"
                                 >
                                     {products.map(prod => (
                                         <option key={prod.sku} value={prod.sku}>
@@ -337,7 +349,7 @@ export default function ForecastsPage() {
                                 <select
                                     value={selectedStore}
                                     onChange={(e) => setSelectedStore(e.target.value)}
-                                    className="w-full bg-surface-elevated border border-white/10 rounded-lg py-2 px-3 text-sm focus:ring-1 focus:ring-secondary outline-none"
+                                    className="w-full !bg-[#1a1a24] !text-[#e8e8f0] border border-white/10 rounded-lg py-2 px-3 text-sm focus:ring-1 focus:ring-secondary outline-none"
                                 >
                                     <option value="S1">Store S1</option>
                                     <option value="S2">Store S2</option>
@@ -351,7 +363,7 @@ export default function ForecastsPage() {
                                 <select
                                     value={historyDays}
                                     onChange={(e) => setHistoryDays(Number(e.target.value))}
-                                    className="w-full bg-surface-elevated border border-white/10 rounded-lg py-2 px-3 text-sm focus:ring-1 focus:ring-secondary outline-none"
+                                    className="w-full !bg-[#1a1a24] !text-[#e8e8f0] border border-white/10 rounded-lg py-2 px-3 text-sm focus:ring-1 focus:ring-secondary outline-none"
                                 >
                                     <option value={7}>7 days</option>
                                     <option value={14}>14 days</option>
@@ -367,7 +379,7 @@ export default function ForecastsPage() {
                                 <select
                                     value={forecastDays}
                                     onChange={(e) => setForecastDays(Number(e.target.value))}
-                                    className="w-full bg-surface-elevated border border-white/10 rounded-lg py-2 px-3 text-sm focus:ring-1 focus:ring-secondary outline-none"
+                                    className="w-full !bg-[#1a1a24] !text-[#e8e8f0] border border-white/10 rounded-lg py-2 px-3 text-sm focus:ring-1 focus:ring-secondary outline-none"
                                 >
                                     <option value={7}>7 days</option>
                                     <option value={14}>14 days</option>

@@ -40,7 +40,7 @@ export default function InteractiveScenarioAnalyst() {
       });
 
       console.log('Response status:', res.status);
-      
+
       if (res.ok) {
         const data = await res.json();
         console.log('Analysis result:', data);
@@ -79,21 +79,21 @@ export default function InteractiveScenarioAnalyst() {
   return (
     <div className="space-y-6 max-w-6xl mx-auto p-6">
       <div>
-        <h1 className="text-3xl font-bold">💬 Interactive Scenario Analyst</h1>
-        <p className="text-gray-600 mt-2">
+        <h1 className="text-3xl font-bold text-foreground">💬 Interactive Scenario Analyst</h1>
+        <p className="text-foreground/70 mt-2">
           Describe any business scenario in plain English. AI will analyze your database and calculate exact impact on your stores.
         </p>
       </div>
 
       {/* Input Section */}
       <Card>
-        <h2 className="text-lg font-semibold mb-4">📝 Describe Your Scenario</h2>
-        
+        <h2 className="text-lg font-semibold mb-4 text-foreground">📝 Describe Your Scenario</h2>
+
         <textarea
           value={scenario}
           onChange={(e) => setScenario(e.target.value)}
           placeholder="Example: Tomorrow there will be a lockdown..."
-          className="w-full p-4 border rounded-lg min-h-[120px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          className="w-full p-4 !bg-[#1a1a24] !text-[#e8e8f0] border border-white/10 rounded-lg min-h-[120px] focus:ring-2 focus:ring-primary/50 focus:border-primary outline-none transition-smooth"
           disabled={analyzing}
         />
 
@@ -115,13 +115,13 @@ export default function InteractiveScenarioAnalyst() {
         </div>
 
         <div className="mt-4">
-          <p className="text-sm font-semibold text-gray-700 mb-2">💡 Try these examples:</p>
+          <p className="text-sm font-semibold text-foreground/60 mb-2">💡 Try these examples:</p>
           <div className="space-y-2">
             {exampleScenarios.map((ex, idx) => (
               <button
                 key={idx}
                 onClick={() => setScenario(ex)}
-                className="block w-full text-left text-sm text-gray-600 hover:text-blue-600 hover:bg-blue-50 p-2 rounded transition-colors"
+                className="block w-full text-left text-sm text-foreground/50 hover:text-primary hover:bg-white/5 p-2 rounded transition-smooth"
                 disabled={analyzing}
               >
                 "{ex}"
@@ -142,7 +142,7 @@ export default function InteractiveScenarioAnalyst() {
       {result && result.status === 'success' && (
         <Card className="bg-white">
           <h2 className="text-2xl font-bold mb-6">🤖 AI Analysis</h2>
-          
+
           <div className="prose max-w-none">
             <div className="text-gray-800 whitespace-pre-wrap leading-relaxed text-lg">
               {result.analysis?.scenario_summary || result.analysis?.raw_response || 'No analysis available'}

@@ -76,8 +76,8 @@ class SimulationResult(BaseModel):
 def analyze_scenario_with_ai(scenario_text: str, baseline_demand: float, db) -> Dict:
     """
     Use LLM to analyze a custom scenario and determine appropriate demand multiplier.
-    AI has knowledge of product categories, relationships, and GNN graph structure.
-    
+    The LLM reasons from economic first principles — no hardcoded scenario rules.
+
     Returns:
         {
             "multiplier": float,
@@ -88,91 +88,82 @@ def analyze_scenario_with_ai(scenario_text: str, baseline_demand: float, db) -> 
             "affected_products": dict  # SKU-level impacts from graph propagation
         }
     """
-    # Use CATEGORY_NAMES imported from category_relationships
-    category_context = CATEGORY_NAMES
+    # Category information for AI context (all 24 categories)
+    category_context = {
+        "AUTO": "Automotive", "BABC": "Baby Care", "BAGL": "Bagels",
+        "BEDM": "Bedding & Mattress", "BEVG": "Beverages", "BKDY": "Bakery",
+        "BOOK": "Books", "CLNS": "Cleaning Supplies", "CLOT": "Clothing",
+        "ELEC": "Electronics", "FRPR": "Fresh Produce & Dairy", "FRZN": "Frozen Foods",
+        "FTRW": "Footwear", "FURH": "Furniture", "GROC": "Groceries",
+        "JWCH": "Jewelry & Watches", "KICH": "Kitchenware", "MEAT": "Meat & Seafood",
+        "PETC": "Pet Care", "PRSN": "Personal Care", "SNCK": "Snacks",
+        "SPRT": "Sports & Outdoor", "STOF": "Stationery & Office", "TOYG": "Toys & Games"
+    }
     
     try:
         import requests
-        
-        # Call local Ollama API with category context
-        prompt = f"""You are analyzing a business scenario for a retail store with these product categories:
-{json.dumps(category_context, indent=2)}
+
+        prompt = f"""You are an expert retail economist. A store manager has described a scenario and you must predict how it will affect demand across product categories.
+
+STORE CATEGORIES (use only these exact codes):
+{json.dumps(category_map, indent=2)}
 
 Scenario: "{scenario_text}"
 Current baseline demand: {baseline_demand:.0f} units/day (total across all categories)
 
 Analyze which SPECIFIC CATEGORIES will be affected and by how much.
 
-═══════════════════════════════════════════════════════════════
-CRITICAL RULES - FOLLOW EXACTLY:
-═══════════════════════════════════════════════════════════════
+CRITICAL RULE - READ THIS FIRST:
+=================================
+When prices INCREASE → people buy LESS → multiplier MUST be < 1.0
+When prices DECREASE → people buy MORE → multiplier MUST be > 1.0
 
-1. PRICE RULE (MOST IMPORTANT):
-   When prices INCREASE → people buy LESS → multiplier MUST be < 1.0
-   When prices DECREASE/SALE → people buy MORE → multiplier MUST be > 1.0
-   NEVER VIOLATE THIS RULE.
+THIS IS THE MOST IMPORTANT RULE. NEVER VIOLATE IT.
 
-2. DIRECT IMPACT ONLY:
-   - Sales/price changes affect ONLY the mentioned category
-   - Electronics sale → ONLY Electronics affected
-   - Rice price up → ONLY Grocery affected  
-   - Do NOT add other categories unless explicitly justified
+Examples:
+- "Rice prices up" → Rice demand DOWN → {{"GROC": 0.85}}
+- "Rice prices down" → Rice demand UP → {{"GROC": 1.3}}
+- "Electronics sale" → Electronics demand UP → {{"ELEC": 1.5}}
+- "Beef expensive" → Beef demand DOWN → {{"MEAT": 0.7}}
 
-3. DO NOT USE "DISPOSABLE INCOME" LOGIC:
-   ❌ WRONG: "Electronics sale → more money → bakery up"
-   ✅ RIGHT: "Electronics sale → ONLY electronics up"
-   A sale doesn't give people more money!
+MULTIPLIER MEANING:
+- Multiplier > 1.0 = DEMAND INCREASES (e.g., 1.3 = +30% demand)
+- Multiplier < 1.0 = DEMAND DECREASES (e.g., 0.8 = -20% demand)
+- Multiplier = 1.0 = NO CHANGE
 
-4. CROSS-CATEGORY IMPACTS ONLY FOR:
-   - Weather events (food essentials spike, non-essentials drop)
-   - Holidays (food + gifts both increase)
-   - Economic crises (luxuries drop, essentials stable)
-   - Competitor closure (all categories increase)
-   NOT for individual product sales!
-
-═══════════════════════════════════════════════════════════════
-CORRECT EXAMPLES:
-═══════════════════════════════════════════════════════════════
-
-✅ "Rice prices up" → {{"GROC": 0.85}}  (ONLY Grocery affected)
-✅ "Electronics sale" → {{"ELEC": 1.8}}  (ONLY Electronics affected)
-✅ "Furniture expensive" → {{"FURH": 0.6}}  (ONLY Furniture affected)
-✅ "Beef on sale" → {{"MEAT": 1.5}}  (ONLY Meat affected)
-
-✅ "Snowstorm forecast" → {{"GROC": 1.6, "FRPR": 1.5, "BKDY": 1.4, "BEVG": 1.3}}
-   (Weather = essentials UP, justified cross-category impact)
-
-✅ "Christmas holiday" → {{"BKDY": 2.0, "MEAT": 1.9, "TOYG": 2.2, "JWCH": 1.5}}
-   (Holiday = food + gifts UP, justified cross-category impact)
-
-═══════════════════════════════════════════════════════════════
-WRONG EXAMPLES (DO NOT DO THIS):
-═══════════════════════════════════════════════════════════════
-
-❌ "Electronics sale" → {{"ELEC": 1.8, "BKDY": 1.2, "TOYG": 1.4}}
-   WRONG! Sales affect only the specific category.
-
-❌ "Rice expensive" → {{"GROC": 1.2}}
-   WRONG! Price UP = demand DOWN. Should be < 1.0
-
-❌ "Snowstorm" → {{"GROC": 0.8}}
-   WRONG! Weather events INCREASE food demand. Should be > 1.0
-
-═══════════════════════════════════════════════════════════════
+KEY SCENARIOS:
+1. PRICE INCREASES → Demand goes DOWN (multiplier < 1.0)
+   - "Rice expensive" → {{"GROC": 0.85}}
+   - "Furniture expensive" → {{"FURH": 0.6}}
+   
+2. SALES/PROMOTIONS → Demand goes UP (multiplier > 1.0)
+   - "Electronics sale" → {{"ELEC": 1.8}}
+   
+3. WEATHER EVENTS → Essentials UP, Others DOWN
+   - "Snowstorm" → {{"GROC": 1.5, "FRPR": 1.6, "FURH": 0.7}}
+   
+4. RECESSION → Luxuries DOWN hard, Essentials stable
+   - "Economic crisis" → {{"FURH": 0.5, "JWCH": 0.4, "GROC": 1.0}}
+   
+5. HOLIDAYS → Food + Gifts UP
+   - "Christmas" → {{"BKDY": 2.0, "TOYG": 2.2, "MEAT": 1.9}}
+   
+6. COMPETITOR CLOSURE → Everything UP
+   - "Competitor closed" → ALL categories 1.3-1.5
 
 Respond ONLY with JSON (no markdown):
 {{
-    "affected_categories": ["ELEC"],
+    "affected_categories": ["FRPR", "BKDY"],
     "category_impacts": {{
-        "ELEC": 1.8
+        "FRPR": 1.3,
+        "BKDY": 1.5
     }},
-    "overall_multiplier": 1.15,
-    "reasoning": "Electronics sale increases demand for electronics only",
-    "confidence": 80
+    "overall_multiplier": 1.2,
+    "reasoning": "<one sentence why these categories and multipliers>",
+    "confidence": 75
 }}
 
-For single category impacts, use ONLY that category.
-For broad events (weather, holidays, recession), use multiple categories.
+If ALL categories affected equally, use empty affected_categories list.
 """
         
         response = requests.post(
@@ -183,123 +174,167 @@ For broad events (weather, holidays, recession), use multiple categories.
                 "stream": False,
                 "format": "json"
             },
-            timeout=15
+            timeout=30
         )
-        
+
         if response.status_code == 200:
             ai_response = response.json()
             result_text = ai_response.get("response", "{}")
-            
-            # Parse JSON response
             result = json.loads(result_text)
-            
-            # Validate and sanitize
+
+            # Validate category codes — reject any code not in our known set
+            valid_codes = set(category_map.keys())
+            raw_impacts = result.get("category_impacts", {})
+            category_impacts = {
+                k: float(v)
+                for k, v in raw_impacts.items()
+                if k in valid_codes and isinstance(v, (int, float))
+            }
+            affected_categories = [c for c in result.get("affected_categories", []) if c in valid_codes]
+
             multiplier = float(result.get("overall_multiplier", 1.0))
-            multiplier = max(0.3, min(3.0, multiplier))
-            
+            multiplier = max(0.1, min(5.0, multiplier))
+
             return {
                 "multiplier": multiplier,
                 "reasoning": result.get("reasoning", "AI analysis completed"),
-                "confidence": int(result.get("confidence", 75)),
-                "affected_categories": result.get("affected_categories", []),
-                "category_impacts": result.get("category_impacts", {})
+                "confidence": int(result.get("confidence", 70)),
+                "affected_categories": affected_categories,
+                "category_impacts": category_impacts,
             }
-        
+
     except Exception as e:
         print(f"AI analysis failed: {e}")
-    
-    # Fallback: category-aware keyword matching
+
+    # ── Fallback when Ollama is unavailable ──────────────────────────────────
+    # Uses semantic name matching against category descriptions + economic
+    # direction signals.  No hardcoded multiplier values per scenario type.
+    return _semantic_fallback(scenario_text, category_map)
+
+
+def _economic_direction(scenario_lower: str) -> float:
+    """
+    Return a base direction signal from the scenario text using economic keywords.
+    Positive signal → demand increase; negative → demand decrease.
+    Magnitude is derived from intensity words, not scenario type.
+    """
+    increase_words = [
+        # weather
+        "sale", "discount", "promo", "promotion", "free", "cheap", "shortage",
+        "panic", "storm", "snow", "rain", "hurricane", "disaster", "flood",
+        # competitor / market
+        "lockdown", "closed", "competitor", "shutdown",
+        # seasonal / cultural
+        "festival", "holiday", "christmas", "thanksgiving", "eid", "diwali",
+        "new year", "celebration", "event",
+        # demand drivers
+        "boom", "surge", "spike", "opening", "launch", "new",
+        # demographic
+        "born", "baby", "adoption", "families", "population", "housing", "development",
+        # payday / stimulus
+        "payday", "bonus", "salary", "stimulus", "rebate", "handout", "cash transfer",
+        # sports / entertainment
+        "super bowl", "world cup", "match", "concert", "fair", "game",
+        # school
+        "school", "semester", "university", "back to school",
+    ]
+    decrease_words = [
+        "tax", "tariff", "expensive", "hike", "surcharge", "inflation", "price up",
+        "increase", "cost", "recession", "crisis", "downturn", "unemployment",
+        "bankrupt", "penalty", "fine", "regulation", "ban", "embargo",
+        "layoff", "retrenchment", "job loss", "interest rate",
+    ]
+
+    inc_score = sum(1 for w in increase_words if w in scenario_lower)
+    dec_score = sum(1 for w in decrease_words if w in scenario_lower)
+
+    # Intensity amplifiers
+    intensity = 1.0
+    if any(w in scenario_lower for w in ["100%", "double", "triple", "massive", "extreme", "huge", "severe"]):
+        intensity = 2.0
+    elif any(w in scenario_lower for w in ["50%", "significant", "major", "heavy", "large"]):
+        intensity = 1.5
+    elif any(w in scenario_lower for w in ["10%", "slight", "minor", "small", "little"]):
+        intensity = 0.6
+
+    net = inc_score - dec_score
+    if net > 0:
+        # Demand increase: baseline 1.0 + intensity-scaled lift
+        return min(1.0 + 0.25 * intensity * net, 3.5)
+    elif net < 0:
+        # Demand decrease: baseline 1.0 - intensity-scaled drop
+        return max(1.0 - 0.18 * intensity * abs(net), 0.15)
+    return 1.1  # neutral lean
+
+
+def _semantic_fallback(scenario_text: str, category_map: Dict[str, str]) -> Dict:
+    """
+    Fallback when the LLM is unavailable.
+    Matches scenario keywords against category descriptions without any
+    hardcoded scenario→category→multiplier rules.
+    """
     scenario_lower = scenario_text.lower()
-    
-    # Detect affected categories based on keywords
-    affected_categories = []
-    category_impacts = {}
-    
-    # Furniture price changes
-    if any(word in scenario_lower for word in ["chair", "table", "sofa", "couch", "desk", "furniture", "bed", "mattress"]) and "price" in scenario_lower:
-        affected_categories = ["FTRW", "FURH", "BEDM"]
-        category_impacts = {"FTRW": 0.8, "FURH": 0.82, "BEDM": 0.85}
-        reasoning = "Furniture price increase reduces demand for furniture categories"
-        overall_mult = 0.89
-        
-    # Specific food items (rice, pasta, etc.) - only affect GROC
-    elif any(word in scenario_lower for word in ["rice", "pasta", "noodle", "cereal", "grain"]) and "price" in scenario_lower:
-        affected_categories = ["GROC"]
-        category_impacts = {"GROC": 0.85}
-        reasoning = "Specific grocery item price increase reduces demand for that category"
-        overall_mult = 0.93
-        
-    # General food/grocery price increases - affects multiple food categories
-    elif any(word in scenario_lower for word in ["grocery", "groceries", "food"]) and any(word in scenario_lower for word in ["price", "expensive", "inflation"]):
-        affected_categories = ["FRPR", "BKDY", "BEVG", "GROC", "MEAT", "FRZN", "SNCK"]
-        category_impacts = {"FRPR": 0.85, "BKDY": 0.88, "BEVG": 0.9, "GROC": 0.87, "MEAT": 0.82, "FRZN": 0.9, "SNCK": 0.92}
-        reasoning = "Broad grocery price increase reduces demand across food categories"
-        overall_mult = 0.88
-        
-    # Weather events - primarily food essentials
-    elif any(word in scenario_lower for word in ["storm", "weather", "snow", "rain", "hurricane", "disaster"]):
-        affected_categories = ["FRPR", "BKDY", "BEVG", "GROC", "MEAT", "CLNS"]
-        category_impacts = {"FRPR": 1.5, "BKDY": 1.6, "BEVG": 1.3, "GROC": 1.4, "MEAT": 1.3, "CLNS": 1.2}
-        reasoning = "Weather event increases panic buying for essentials"
-        overall_mult = 1.4
-        
-    # Holidays - broad food impact + gifts
-    elif any(word in scenario_lower for word in ["holiday", "christmas", "thanksgiving", "festival", "celebration"]):
-        affected_categories = ["FRPR", "BKDY", "BEVG", "SNCK", "MEAT", "GROC", "TOYG", "JWCH", "CLOT"]
-        category_impacts = {
-            "FRPR": 1.8, "BKDY": 2.0, "BEVG": 1.6, "SNCK": 1.7, "MEAT": 1.9,
-            "GROC": 1.7, "TOYG": 2.2, "JWCH": 1.5, "CLOT": 1.4
+    base_direction = _economic_direction(scenario_lower)
+
+    # Build a token set from the scenario
+    import re
+    tokens = set(re.findall(r"[a-z]+", scenario_lower))
+
+    # For each category, score relevance by how many of its description words appear in the scenario
+    category_scores: Dict[str, float] = {}
+    for code, description in category_map.items():
+        desc_tokens = set(re.findall(r"[a-z]+", description.lower()))
+        # Remove very common words
+        stop = {"and", "the", "of", "in", "for", "a", "an", "or", "with"}
+        desc_tokens -= stop
+        overlap = tokens & desc_tokens
+        if overlap:
+            # Score = fraction of description tokens matched, weighted by token count
+            score = len(overlap) / max(len(desc_tokens), 1)
+            category_scores[code] = score
+
+    # Keep only categories with meaningful overlap
+    threshold = 0.10
+    matched = {k: v for k, v in category_scores.items() if v >= threshold}
+
+    if not matched:
+        # No specific categories identified — treat as broad market event
+        return {
+            "multiplier": base_direction,
+            "reasoning": f"No specific product category identified. Applying a broad market signal based on scenario context.",
+            "confidence": 40,
+            "affected_categories": [],
+            "category_impacts": {},
         }
-        reasoning = "Holiday season surge across food and gift categories"
-        overall_mult = 1.7
-        
-    # Economic recession - non-essentials hit hardest
-    elif any(word in scenario_lower for word in ["recession", "crisis", "downturn", "economy", "unemployment"]):
-        affected_categories = ["FTRW", "ELEC", "JWCH", "CLOT", "TOYG", "SPRT", "FURH"]
-        category_impacts = {"FTRW": 0.5, "ELEC": 0.6, "JWCH": 0.4, "CLOT": 0.7, "TOYG": 0.6, "SPRT": 0.55, "FURH": 0.5}
-        reasoning = "Economic downturn reduces non-essential purchases"
-        overall_mult = 0.75
-        
-    # Baby boom or families moving in
-    elif any(word in scenario_lower for word in ["baby", "families", "housing development", "newborns"]):
-        affected_categories = ["BABC", "FRPR", "GROC", "CLNS", "PRSN"]
-        category_impacts = {"BABC": 2.0, "FRPR": 1.3, "GROC": 1.2, "CLNS": 1.3, "PRSN": 1.2}
-        reasoning = "New families increase demand for baby and household essentials"
-        overall_mult = 1.3
-        
-    # Pet adoption trend
-    elif any(word in scenario_lower for word in ["pet", "dog", "cat", "adoption"]):
-        affected_categories = ["PETC"]
-        category_impacts = {"PETC": 1.8}
-        reasoning = "Pet adoption trend boosts pet care products"
-        overall_mult = 1.1
-        
-    # School season
-    elif any(word in scenario_lower for word in ["school", "back to school", "semester", "students"]):
-        affected_categories = ["STOF", "BOOK", "CLOT", "SNCK"]
-        category_impacts = {"STOF": 2.5, "BOOK": 1.8, "CLOT": 1.4, "SNCK": 1.3}
-        reasoning = "Back-to-school season drives stationery and book sales"
-        overall_mult = 1.3
-        
-    # Competitor closure - general increase
-    elif any(word in scenario_lower for word in ["competitor", "closed", "shutdown", "out of business"]):
-        affected_categories = []  # All categories
-        category_impacts = {}
-        reasoning = "Competitor closure increases demand across all categories"
-        overall_mult = 1.5
-        
-    else:
-        affected_categories = []
-        category_impacts = {}
-        reasoning = "Moderate impact across categories"
-        overall_mult = 1.2
-    
+
+    # Assign per-category multipliers: categories with higher relevance scores
+    # get a multiplier closer to the base_direction; lower scores get a dampened effect
+    max_score = max(matched.values())
+    category_impacts: Dict[str, float] = {}
+    for code, score in matched.items():
+        dampening = score / max_score  # 0..1 — most-relevant category gets full effect
+        if base_direction >= 1.0:
+            mult = 1.0 + (base_direction - 1.0) * dampening
+        else:
+            mult = 1.0 - (1.0 - base_direction) * dampening
+        mult = round(max(0.1, min(5.0, mult)), 2)
+        category_impacts[code] = mult
+
+    # Overall multiplier: weighted average
+    total_weight = sum(matched.values())
+    overall = sum(category_impacts[c] * matched[c] for c in matched) / total_weight
+    overall = round(max(0.1, min(5.0, overall)), 3)
+
     return {
-        "multiplier": overall_mult,
-        "reasoning": reasoning,
-        "confidence": 70,
-        "affected_categories": affected_categories,
-        "category_impacts": category_impacts
+        "multiplier": overall,
+        "reasoning": (
+            f"AI model unavailable. Semantic fallback matched categories from scenario text "
+            f"and applied economic direction (direction signal: {base_direction:.2f}). "
+            f"Matched on: {', '.join(matched.keys())}."
+        ),
+        "confidence": 45,
+        "affected_categories": list(matched.keys()),
+        "category_impacts": category_impacts,
     }
 
 

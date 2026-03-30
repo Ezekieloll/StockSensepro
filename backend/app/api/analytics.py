@@ -24,6 +24,17 @@ ANALYSIS_DIR = ML_DIR / "analysis" / "results"
 MODELS_DIR = ML_DIR / "models"
 
 
+def compute_forecast_accuracy_from_wape(final_metrics: Dict, default: float = 0.0) -> float:
+    """Forecast accuracy derived from WAPE for business-facing consistency."""
+    wape = final_metrics.get("wape")
+    if wape is None:
+        return default
+    try:
+        return round(100 - float(wape), 2)
+    except (TypeError, ValueError):
+        return default
+
+
 def read_csv_metrics(filename: str) -> List[Dict]:
     """Read metrics from CSV file."""
     filepath = ANALYSIS_DIR / filename
@@ -60,6 +71,22 @@ def calculate_aggregate_metrics():
     }
 
 
+def percentile(values: List[float], p: float) -> float:
+    """Simple linear-interpolated percentile in [0, 1]."""
+    if not values:
+        return 0.0
+    sorted_vals = sorted(values)
+    if len(sorted_vals) == 1:
+        return float(sorted_vals[0])
+
+    p = min(max(p, 0.0), 1.0)
+    idx = p * (len(sorted_vals) - 1)
+    lower = int(idx)
+    upper = min(lower + 1, len(sorted_vals) - 1)
+    frac = idx - lower
+    return float(sorted_vals[lower] + (sorted_vals[upper] - sorted_vals[lower]) * frac)
+
+
 @router.get("/model-metrics")
 def get_model_metrics():
     """
@@ -68,15 +95,20 @@ def get_model_metrics():
     """
     models = []
     
-    # Check for TFT+GNN results (most recent/active model)
-    tft_gnn_results_file = MODELS_DIR / "tft_gnn_final_results.json"
+    # Check for TFT+GNN results (prefer v2.2, fallback to legacy)
+    tft_gnn_results_file = MODELS_DIR / "tft_gnn_v2_2_results.json"
+    tft_model_name = "TFT+GNN v2.2"
+    if not tft_gnn_results_file.exists():
+        tft_gnn_results_file = MODELS_DIR / "tft_gnn_final_results.json"
+        tft_model_name = "TFT+GNN v2.1"
+
     if tft_gnn_results_file.exists():
         try:
             with open(tft_gnn_results_file, 'r') as f:
                 tft_gnn_data = json.load(f)
                 final_metrics = tft_gnn_data.get("final_metrics", {})
                 models.append({
-                    "model": "TFT+GNN v2.1",
+                    "model": tft_model_name,
                     "type": "Temporal Fusion Transformer with Graph Neural Network",
                     "mae": round(final_metrics.get("mae", 1.88), 2),
                     "mape": round(final_metrics.get("mape", 39.88), 2),
@@ -84,7 +116,7 @@ def get_model_metrics():
                     "status": "active",
                     "trained_at": "2026-01-20T10:30:00",
                     "epochs": tft_gnn_data.get("best_epoch", 50),
-                    "forecast_accuracy": round(final_metrics.get("forecast_accuracy", 60.12), 2)
+                    "forecast_accuracy": compute_forecast_accuracy_from_wape(final_metrics, default=60.12)
                 })
         except Exception as e:
             print(f"Error reading TFT+GNN results: {e}")
@@ -104,10 +136,28 @@ def get_model_metrics():
                 "epochs": 50
             })
     
-    # Add historical/alternative models (these would come from saved results)
-    # For now, we'll include some baseline models with estimated metrics
-    models.extend([
-        {
+    # LSTM v2 — read from trained results if available, else fallback
+    lstm_results_file = MODELS_DIR / "lstm_v2_final_results.json"
+    if lstm_results_file.exists():
+        try:
+            with open(lstm_results_file, 'r') as f:
+                lstm_data = json.load(f)
+                fm = lstm_data.get("final_metrics", {})
+                models.append({
+                    "model": "LSTM v1.8",
+                    "type": "Long Short-Term Memory",
+                    "mae": round(fm.get("mae", 5.67), 2),
+                    "mape": round(fm.get("mape", 11.2), 2),
+                    "wape": round(fm.get("wape", 9.8), 2),
+                    "status": "standby",
+                    "trained_at": "2026-01-15T14:20:00",
+                    "epochs": lstm_data.get("best_epoch", 40),
+                    "forecast_accuracy": compute_forecast_accuracy_from_wape(fm, default=88.8)
+                })
+        except Exception as e:
+            print(f"Error reading LSTM results: {e}")
+    else:
+        models.append({
             "model": "LSTM v1.8",
             "type": "Long Short-Term Memory",
             "mae": 5.67,
@@ -116,8 +166,30 @@ def get_model_metrics():
             "status": "standby",
             "trained_at": "2026-01-15T14:20:00",
             "epochs": 40
-        },
-        {
+        })
+
+    # LSTM+GNN v2 — read from trained results if available, else fallback
+    lstm_gnn_results_file = MODELS_DIR / "lstm_gnn_v2_final_results.json"
+    if lstm_gnn_results_file.exists():
+        try:
+            with open(lstm_gnn_results_file, 'r') as f:
+                lstm_gnn_data = json.load(f)
+                fm = lstm_gnn_data.get("final_metrics", {})
+                models.append({
+                    "model": "LSTM+GNN v1.2",
+                    "type": "LSTM with Graph Neural Network",
+                    "mae": round(fm.get("mae", 4.89), 2),
+                    "mape": round(fm.get("mape", 9.8), 2),
+                    "wape": round(fm.get("wape", 8.4), 2),
+                    "status": "standby",
+                    "trained_at": "2026-01-10T09:15:00",
+                    "epochs": lstm_gnn_data.get("best_epoch", 45),
+                    "forecast_accuracy": compute_forecast_accuracy_from_wape(fm, default=90.2)
+                })
+        except Exception as e:
+            print(f"Error reading LSTM+GNN results: {e}")
+    else:
+        models.append({
             "model": "LSTM+GNN v1.2",
             "type": "LSTM with Graph Neural Network",
             "mae": 4.89,
@@ -126,8 +198,30 @@ def get_model_metrics():
             "status": "standby",
             "trained_at": "2026-01-10T09:15:00",
             "epochs": 45
-        },
-        {
+        })
+
+    # Transformer v2 — read from trained results if available, else fallback
+    transformer_results_file = MODELS_DIR / "transformer_v2_final_results.json"
+    if transformer_results_file.exists():
+        try:
+            with open(transformer_results_file, 'r') as f:
+                transformer_data = json.load(f)
+                fm = transformer_data.get("final_metrics", {})
+                models.append({
+                    "model": "Transformer v1.0",
+                    "type": "Vanilla Transformer",
+                    "mae": round(fm.get("mae", 6.12), 2),
+                    "mape": round(fm.get("mape", 12.5), 2),
+                    "wape": round(fm.get("wape", 10.2), 2),
+                    "status": "archived",
+                    "trained_at": "2025-12-28T16:45:00",
+                    "epochs": transformer_data.get("best_epoch", 30),
+                    "forecast_accuracy": compute_forecast_accuracy_from_wape(fm, default=87.5)
+                })
+        except Exception as e:
+            print(f"Error reading Transformer results: {e}")
+    else:
+        models.append({
             "model": "Transformer v1.0",
             "type": "Vanilla Transformer",
             "mae": 6.12,
@@ -136,8 +230,7 @@ def get_model_metrics():
             "status": "archived",
             "trained_at": "2025-12-28T16:45:00",
             "epochs": 30
-        }
-    ])
+        })
     
     return {
         "models": models,
@@ -245,6 +338,107 @@ def get_accuracy_summary():
             "p75": round(mape_values[3 * n // 4], 2)
         },
         "analysis_date": datetime.now().isoformat()
+    }
+
+
+@router.get("/anomalies-summary")
+def get_anomalies_summary(
+    top_k: Optional[int] = 5,
+    percentile_threshold: Optional[float] = 0.8,
+):
+    """
+    Forecast error anomalies based on per-SKU MAPE/WAPE percentiles.
+
+    Rule:
+    - anomaly if MAPE > percentile(MAPE, threshold) OR WAPE > percentile(WAPE, threshold)
+    """
+    mape_data = read_csv_metrics("mape_per_product.csv")
+    wape_data = read_csv_metrics("wape_per_product.csv")
+
+    if not mape_data or not wape_data:
+        raise HTTPException(status_code=404, detail="Analysis data not found")
+
+    p = 0.8 if percentile_threshold is None else percentile_threshold
+    p = min(max(p, 0.0), 1.0)
+
+    # Build lookup tables from CSVs.
+    mape_lookup: Dict[str, Dict] = {}
+    wape_lookup: Dict[str, Dict] = {}
+
+    for row in mape_data:
+        pid = row.get("product_id") or row.get("sku")
+        if not pid:
+            continue
+        mape_lookup[pid] = {
+            "mape": float(row.get("mape", 0.0)),
+            "avg_demand": float(row.get("avg_demand", 0.0)),
+        }
+
+    for row in wape_data:
+        pid = row.get("product_id") or row.get("sku")
+        if not pid:
+            continue
+        wape_lookup[pid] = {
+            "wape": float(row.get("wape", 0.0)),
+            "avg_demand": float(row.get("avg_demand", 0.0)),
+        }
+
+    common_ids = sorted(set(mape_lookup.keys()) & set(wape_lookup.keys()))
+    if not common_ids:
+        raise HTTPException(status_code=404, detail="No overlapping SKU metrics found")
+
+    mape_values = [mape_lookup[pid]["mape"] for pid in common_ids]
+    wape_values = [wape_lookup[pid]["wape"] for pid in common_ids]
+
+    mape_p = percentile(mape_values, p)
+    wape_p = percentile(wape_values, p)
+
+    anomalies = []
+    for pid in common_ids:
+        mape_val = mape_lookup[pid]["mape"]
+        wape_val = wape_lookup[pid]["wape"]
+        is_mape_anomaly = mape_val > mape_p
+        is_wape_anomaly = wape_val > wape_p
+
+        if not (is_mape_anomaly or is_wape_anomaly):
+            continue
+
+        reason_flags = []
+        if is_mape_anomaly:
+            reason_flags.append("high_mape")
+        if is_wape_anomaly:
+            reason_flags.append("high_wape")
+
+        # Severity from distance above threshold.
+        severity_score = max(
+            (mape_val - mape_p) / max(mape_p, 1e-6),
+            (wape_val - wape_p) / max(wape_p, 1e-6),
+        )
+
+        anomalies.append({
+            "product_id": pid,
+            "avg_demand": round(mape_lookup[pid]["avg_demand"], 3),
+            "mape": round(mape_val, 2),
+            "wape": round(wape_val, 2),
+            "reasons": reason_flags,
+            "severity_score": round(float(severity_score), 4),
+        })
+
+    anomalies.sort(key=lambda x: x["severity_score"], reverse=True)
+
+    top_k = 5 if top_k is None else max(int(top_k), 1)
+    top_anomalies = anomalies[:top_k]
+
+    return {
+        "total_products": len(common_ids),
+        "anomaly_count": len(anomalies),
+        "thresholds": {
+            "percentile": round(p, 2),
+            "mape": round(mape_p, 2),
+            "wape": round(wape_p, 2),
+        },
+        "top_anomalies": top_anomalies,
+        "generated_at": datetime.now().isoformat(),
     }
 
 
