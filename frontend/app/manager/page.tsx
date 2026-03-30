@@ -23,6 +23,7 @@ import ForecastsTable from './components/ForecastsTable';
 import PurchaseOrders from './components/PurchaseOrders';
 import InventoryByStore from './components/InventoryByStore';
 import PurchaseOrderModal from './components/PurchaseOrderModal';
+import RebalancingWorkflowModal from './components/RebalancingWorkflowModal';
 
 interface User {
     id?: number;
@@ -101,6 +102,7 @@ export default function ManagerDashboard() {
     const [showPOModal, setShowPOModal] = useState(false);
     const [poItems, setPOItems] = useState<PurchaseOrderItemCreate[]>([]);
     const [poNotes, setPONotes] = useState('');
+    const [showRebalancingModal, setShowRebalancingModal] = useState(false);
 
     // Inventory data state
     const [inventoryByStore, setInventoryByStore] = useState<any[]>([]);
@@ -327,7 +329,7 @@ export default function ManagerDashboard() {
                                 )}
                             </div>
                             <div className="hidden md:flex items-center gap-1">
-                                {['overview', 'forecasts', 'orders', 'inventory', 'alerts'].map((tab) => (
+                                {['overview', 'forecasts'].map((tab) => (
                                     <button
                                         key={tab}
                                         onClick={() => tab === 'forecasts' ? router.push('/forecasts') : setActiveTab(tab)}
@@ -497,7 +499,7 @@ export default function ManagerDashboard() {
                 {/* Bottom Section */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                     <PurchaseOrders purchaseOrders={purchaseOrders} forecastLoading={forecastLoading} getStatusBadge={getStatusBadge} setShowPOModal={setShowPOModal} />
-                    <InventoryByStore inventoryByStore={inventoryByStore} />
+                    <InventoryByStore inventoryByStore={inventoryByStore} onManage={() => setShowRebalancingModal(true)} />
                 </div>
 
                 {/* LLM Assistant */}
@@ -553,6 +555,17 @@ export default function ManagerDashboard() {
                             alert('Failed to create purchase order');
                         }
                     }}
+                />
+
+                <RebalancingWorkflowModal
+                    showModal={showRebalancingModal}
+                    setShowModal={setShowRebalancingModal}
+                    inventoryByStore={inventoryByStore}
+                    userStore={userStore}
+                    selectedStore={selectedStore}
+                    apiUrl={API_URL}
+                    getAuthHeaders={getAuthHeaders}
+                    onPlanCreated={() => fetchForecastData(selectedStore || undefined)}
                 />
             </div>
         </div>

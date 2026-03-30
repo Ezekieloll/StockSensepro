@@ -13,6 +13,11 @@ const ForceGraph3D = dynamic(() => import('react-force-graph-3d'), { ssr: false 
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
+const getAuthHeaders = (): HeadersInit => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    return token ? { Authorization: `Bearer ${token}` } : {};
+};
+
 interface GraphNode {
     id: string;
     index: number;
@@ -146,7 +151,9 @@ export default function GNN3DVisualizer() {
 
     const fetchStats = async () => {
         try {
-            const response = await fetch(`${API_URL}/gnn/graph-statistics`);
+            const response = await fetch(`${API_URL}/gnn/graph-statistics`, {
+                headers: getAuthHeaders(),
+            });
             if (response.ok) {
                 const data = await response.json();
                 setStats(data);
@@ -159,7 +166,9 @@ export default function GNN3DVisualizer() {
     const fetchGraphPreview = async () => {
         setLoading(true);
         try {
-            const response = await fetch(`${API_URL}/gnn/graph-structure?limit=240&min_edge_weight=0.0`);
+            const response = await fetch(`${API_URL}/gnn/graph-structure?limit=240&min_edge_weight=0.0`, {
+                headers: getAuthHeaders(),
+            });
             if (response.ok) {
                 const data = await response.json();
                 setGraphData(data);
@@ -176,7 +185,9 @@ export default function GNN3DVisualizer() {
 
     const fetchInfluences = async (sku: string) => {
         try {
-            const response = await fetch(`${API_URL}/gnn/product-influences/${sku}?top_k=10`);
+            const response = await fetch(`${API_URL}/gnn/product-influences/${sku}?top_k=10`, {
+                headers: getAuthHeaders(),
+            });
             if (response.ok) {
                 const data = await response.json();
                 setInfluences(data.influences);
@@ -188,7 +199,9 @@ export default function GNN3DVisualizer() {
 
     const fetchProductCatalog = async () => {
         try {
-            const response = await fetch(`${API_URL}/products/catalog`);
+            const response = await fetch(`${API_URL}/products/catalog`, {
+                headers: getAuthHeaders(),
+            });
             if (response.ok) {
                 const data = await response.json();
                 setProductCatalog(data.sku_lookup);

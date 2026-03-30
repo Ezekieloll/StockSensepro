@@ -57,8 +57,8 @@ def bias(y, yhat):
 
 
 def forecast_accuracy(y, yhat):
-    """100 - MAPE for easier interpretation"""
-    return 100 - mape(y, yhat)
+    """100 - WAPE for business-facing portfolio interpretation"""
+    return 100 - wape(y, yhat)
 
 
 # ==========================================

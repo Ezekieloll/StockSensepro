@@ -5,9 +5,10 @@ import React from 'react';
 
 interface InventoryByStoreProps {
   inventoryByStore: any[];
+  onManage?: () => void;
 }
 
-const InventoryByStore: React.FC<InventoryByStoreProps> = ({ inventoryByStore }) => (
+const InventoryByStore: React.FC<InventoryByStoreProps> = ({ inventoryByStore, onManage }) => (
   <Card glass>
     <CardHeader>
       <div className="flex items-center justify-between">
@@ -18,7 +19,7 @@ const InventoryByStore: React.FC<InventoryByStoreProps> = ({ inventoryByStore })
           </CardTitle>
           <CardDescription>Stock health across locations</CardDescription>
         </div>
-        <Button variant="ghost" size="sm">Manage</Button>
+        <Button variant="ghost" size="sm" onClick={onManage}>Manage</Button>
       </div>
     </CardHeader>
     <CardContent>

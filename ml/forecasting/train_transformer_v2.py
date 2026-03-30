@@ -53,7 +53,7 @@ def bias(y, yhat):
 
 
 def forecast_accuracy(y, yhat):
-    return 100 - mape(y, yhat)
+    return 100 - wape(y, yhat)
 
 
 # ==========================================

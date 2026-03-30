@@ -52,7 +52,33 @@ interface ModelMetricsResponse {
     total_models: number;
 }
 
+interface ForecastAnomaly {
+    product_id: string;
+    avg_demand: number;
+    mape: number;
+    wape: number;
+    reasons: string[];
+    severity_score: number;
+}
+
+interface AnomaliesSummaryResponse {
+    total_products: number;
+    anomaly_count: number;
+    thresholds: {
+        percentile: number;
+        mape: number;
+        wape: number;
+    };
+    top_anomalies: ForecastAnomaly[];
+    generated_at: string;
+}
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
+const getAuthHeaders = (): HeadersInit => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    return token ? { Authorization: `Bearer ${token}` } : {};
+};
 
 export default function AnalystDashboard() {
     const router = useRouter();
@@ -71,6 +97,9 @@ export default function AnalystDashboard() {
     const [isChatOpen, setIsChatOpen] = useState(false);
     const [gnnStats, setGnnStats] = useState<{ nodes: number; edges: number } | null>(null);
     const [stockoutCount, setStockoutCount] = useState<number | null>(null);
+    const [anomalies, setAnomalies] = useState<AnomaliesSummaryResponse | null>(null);
+    const [anomaliesLoading, setAnomaliesLoading] = useState(false);
+    const [showAllAnomalies, setShowAllAnomalies] = useState(false);
 
     useEffect(() => {
         const userData = localStorage.getItem('user');
@@ -94,6 +123,7 @@ export default function AnalystDashboard() {
         fetchModelMetrics();
         fetchGNNStats();
         fetchStockoutCount();
+        fetchAnomaliesSummary();
     }, [router]);
 
     // Close export menu when clicking outside
@@ -113,7 +143,9 @@ export default function AnalystDashboard() {
 
     const fetchStockoutCount = async () => {
         try {
-            const response = await fetch(`${API_URL}/adversarial/?high_risk_only=true`);
+            const response = await fetch(`${API_URL}/adversarial/?high_risk_only=true`, {
+                headers: getAuthHeaders(),
+            });
             if (response.ok) {
                 const data = await response.json();
                 // Deduplicate by SKU — count unique SKUs at risk
@@ -127,7 +159,9 @@ export default function AnalystDashboard() {
 
     const fetchGNNStats = async () => {
         try {
-            const response = await fetch(`${API_URL}/gnn/graph-statistics`);
+            const response = await fetch(`${API_URL}/gnn/graph-statistics`, {
+                headers: getAuthHeaders(),
+            });
             if (response.ok) {
                 const data = await response.json();
                 setGnnStats({ nodes: data.nodes, edges: data.edges });
@@ -140,7 +174,9 @@ export default function AnalystDashboard() {
     const fetchModelMetrics = async () => {
         setMetricsLoading(true);
         try {
-            const response = await fetch(`${API_URL}/analytics/model-metrics`);
+            const response = await fetch(`${API_URL}/analytics/model-metrics`, {
+                headers: getAuthHeaders(),
+            });
             if (response.ok) {
                 const data: ModelMetricsResponse = await response.json();
                 setModelMetrics(data.models);
@@ -156,10 +192,29 @@ export default function AnalystDashboard() {
         }
     };
 
+    const fetchAnomaliesSummary = async () => {
+        setAnomaliesLoading(true);
+        try {
+            const response = await fetch(`${API_URL}/analytics/anomalies-summary?top_k=500&percentile_threshold=0.8`, {
+                headers: getAuthHeaders(),
+            });
+            if (response.ok) {
+                const data: AnomaliesSummaryResponse = await response.json();
+                setAnomalies(data);
+            }
+        } catch (error) {
+            console.error('Error fetching anomalies summary:', error);
+        } finally {
+            setAnomaliesLoading(false);
+        }
+    };
+
     const handleExportReport = async () => {
         try {
             // Download full analysis report
-            const response = await fetch(`${API_URL}/analytics/export/full-analysis`);
+            const response = await fetch(`${API_URL}/analytics/export/full-analysis`, {
+                headers: getAuthHeaders(),
+            });
             if (response.ok) {
                 const blob = await response.blob();
                 const url = window.URL.createObjectURL(blob);
@@ -183,7 +238,9 @@ export default function AnalystDashboard() {
 
     const handleExportModelPerformance = async () => {
         try {
-            const response = await fetch(`${API_URL}/analytics/export/model-performance`);
+            const response = await fetch(`${API_URL}/analytics/export/model-performance`, {
+                headers: getAuthHeaders(),
+            });
             if (response.ok) {
                 const blob = await response.blob();
                 const url = window.URL.createObjectURL(blob);
@@ -205,7 +262,9 @@ export default function AnalystDashboard() {
 
     const handleExportVolumeStats = async () => {
         try {
-            const response = await fetch(`${API_URL}/analytics/export/sku-volume-stats`);
+            const response = await fetch(`${API_URL}/analytics/export/sku-volume-stats`, {
+                headers: getAuthHeaders(),
+            });
             if (response.ok) {
                 const blob = await response.blob();
                 const url = window.URL.createObjectURL(blob);
@@ -231,7 +290,10 @@ export default function AnalystDashboard() {
             // POST /simulations/run with no body → backend returns default scenarios using live DB data
             const response = await fetch(`${API_URL}/simulations/run`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...getAuthHeaders(),
+                },
                 body: JSON.stringify([]),
             });
             if (response.ok) {
@@ -259,7 +321,10 @@ export default function AnalystDashboard() {
             // POST /simulations/custom?scenario_text=... → AI + GNN powered analysis
             const response = await fetch(
                 `${API_URL}/simulations/custom?scenario_text=${encodeURIComponent(customScenario)}`,
-                { method: 'POST' }
+                {
+                    method: 'POST',
+                    headers: getAuthHeaders(),
+                }
             );
             if (response.ok) {
                 const result = await response.json();
@@ -603,16 +668,60 @@ export default function AnalystDashboard() {
                                             <AlertIcon size={18} className="text-warning" />
                                             Detected Anomalies
                                         </CardTitle>
+                                        {anomalies && anomalies.top_anomalies.length > 3 && (
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={() => setShowAllAnomalies((prev) => !prev)}
+                                            >
+                                                {showAllAnomalies ? 'Show Top 3' : 'View All'}
+                                            </Button>
+                                        )}
                                     </div>
                                 </CardHeader>
                                 <CardContent>
-                                    <div className="flex items-center justify-center py-12">
-                                        <div className="text-center">
-                                            <AlertIcon size={48} className="text-muted mx-auto mb-4 opacity-30" />
-                                            <p className="text-muted text-lg font-medium">To be updated</p>
-                                            <p className="text-muted/60 text-sm mt-2">Anomaly detection coming soon</p>
+                                    {anomaliesLoading ? (
+                                        <div className="text-center py-8 text-muted">
+                                            <RefreshIcon size={24} className="mx-auto mb-2 animate-spin" />
+                                            Loading anomalies...
                                         </div>
-                                    </div>
+                                    ) : !anomalies ? (
+                                        <div className="text-center py-8 text-muted text-sm">No anomaly data available.</div>
+                                    ) : (
+                                        <div className="space-y-4">
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div className="p-3 rounded-lg bg-warning/10 border border-warning/30">
+                                                    <p className="text-xs text-muted uppercase tracking-wider">Flagged SKUs</p>
+                                                    <p className="text-xl font-bold text-warning mt-1">{anomalies.anomaly_count}</p>
+                                                </div>
+                                                <div className="p-3 rounded-lg bg-info/10 border border-info/30">
+                                                    <p className="text-xs text-muted uppercase tracking-wider">Threshold</p>
+                                                    <p className="text-xl font-bold text-info mt-1">P{Math.round(anomalies.thresholds.percentile * 100)}</p>
+                                                </div>
+                                            </div>
+
+                                            <div className="text-xs text-muted">
+                                                MAPE &gt; {anomalies.thresholds.mape.toFixed(1)} or WAPE &gt; {anomalies.thresholds.wape.toFixed(1)}
+                                            </div>
+
+                                            <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                                                {(showAllAnomalies ? anomalies.top_anomalies : anomalies.top_anomalies.slice(0, 3)).length === 0 ? (
+                                                    <div className="text-sm text-success">No SKUs exceed anomaly thresholds.</div>
+                                                ) : (showAllAnomalies ? anomalies.top_anomalies : anomalies.top_anomalies.slice(0, 3)).map((item) => (
+                                                    <div key={item.product_id} className="p-3 rounded-lg bg-white/5 border border-white/10">
+                                                        <div className="flex items-center justify-between gap-2">
+                                                            <span className="text-sm font-medium font-mono">{item.product_id}</span>
+                                                            <div className="flex items-center gap-2 text-xs">
+                                                                <span className="text-warning">MAPE {item.mape.toFixed(1)}%</span>
+                                                                <span className="text-muted">|</span>
+                                                                <span className="text-info">WAPE {item.wape.toFixed(1)}%</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
                                 </CardContent>
                             </Card>
                         </div>
@@ -628,161 +737,90 @@ export default function AnalystDashboard() {
                             {/* Accuracy Summary - Takes 1 column */}
                             <AccuracySummaryCard />
 
-                            {/* Forecast Accuracy - Takes 2 columns */}
+                            {/* What-If Simulation - Takes 2 columns */}
                             <div className="lg:col-span-2">
                                 <Card glass>
                                     <CardHeader>
                                         <div className="flex items-center justify-between">
                                             <div>
                                                 <CardTitle className="flex items-center gap-2 text-lg">
-                                                    <ChartIcon size={18} className="text-success" />
-                                                    Forecast Accuracy Review
+                                                    <RefreshIcon size={18} className="text-primary" />
+                                                    What-If Simulation
                                                 </CardTitle>
-                                                <CardDescription>Compare predictions vs actuals</CardDescription>
+                                                <CardDescription>Test different demand scenarios</CardDescription>
                                             </div>
+                                            <Button variant="primary" size="sm" onClick={runSimulation} disabled={simulationLoading}>
+                                                <RefreshIcon size={14} className={simulationLoading ? 'animate-spin' : ''} />
+                                                {simulationLoading ? 'Running...' : 'Run Simulation'}
+                                            </Button>
                                         </div>
                                     </CardHeader>
                                     <CardContent>
-                                        <div className="flex items-center justify-center py-12">
-                                            <div className="text-center">
-                                                <ChartIcon size={48} className="text-muted mx-auto mb-4 opacity-30" />
-                                                <p className="text-muted text-lg font-medium">To be updated</p>
-                                                <p className="text-muted/60 text-sm mt-2">Forecast accuracy data coming soon</p>
-                                            </div>
+                                        {/* Custom scenario input */}
+                                        <div className="mb-4">
+                                            {showCustomInput ? (
+                                                <div className="flex gap-2">
+                                                    <input
+                                                        type="text"
+                                                        value={customScenario}
+                                                        onChange={(e) => setCustomScenario(e.target.value)}
+                                                        onKeyDown={(e) => e.key === 'Enter' && runCustomScenario()}
+                                                        placeholder="e.g. Major snowstorm next week..."
+                                                        className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                                                        autoFocus
+                                                    />
+                                                    <Button variant="primary" size="sm" onClick={runCustomScenario} disabled={simulationLoading}>Analyze</Button>
+                                                    <Button variant="ghost" size="sm" onClick={() => { setShowCustomInput(false); setCustomScenario(''); }}>Cancel</Button>
+                                                </div>
+                                            ) : (
+                                                <div className="p-3 bg-info/10 border border-info/30 rounded-lg flex items-center justify-between">
+                                                    <p className="text-sm text-info flex items-center gap-2">
+                                                        <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                                                        </svg>
+                                                        Use the chat assistant or run a custom AI scenario
+                                                    </p>
+                                                    <Button variant="ghost" size="sm" onClick={() => setShowCustomInput(true)}>Custom</Button>
+                                                </div>
+                                            )}
                                         </div>
+
+                                        {/* Results */}
+                                        {simulationResults.length === 0 ? (
+                                            <div className="text-center py-8 text-muted">
+                                                <RefreshIcon size={32} className="mx-auto mb-2 opacity-30" />
+                                                <p className="text-sm">Click <span className="text-foreground font-medium">Run Simulation</span> to load live scenarios from the database</p>
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-3">
+                                                {simulationResults.map((sim: any, idx: number) => (
+                                                    <div key={idx} className={`p-4 rounded-lg border ${sim.ai_reasoning ? 'bg-primary/5 border-primary/30' : 'bg-white/5 border-white/5'}`}>
+                                                        <div className="flex items-start justify-between mb-2">
+                                                            <div className="flex-1">
+                                                                <div className="flex items-center gap-2">
+                                                                    <div className="font-medium text-sm">{sim.scenario}</div>
+                                                                    {sim.ai_reasoning && (
+                                                                        <span className="px-2 py-0.5 bg-primary/20 text-primary text-xs rounded-full">AI</span>
+                                                                    )}
+                                                                </div>
+                                                                {sim.ai_reasoning && (
+                                                                    <div className="text-xs text-muted mt-1 italic">{sim.ai_reasoning}</div>
+                                                                )}
+                                                                <div className="text-xs text-muted mt-1">Confidence: {sim.confidence}%</div>
+                                                            </div>
+                                                            <div className="text-right ml-4">
+                                                                <div className="font-bold text-lg">{sim.demand.toLocaleString()}</div>
+                                                                <div className="mt-1">{getRiskBadge(sim.risk)}</div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
                                     </CardContent>
                                 </Card>
                             </div>
                         </div>
-
-                        {/* Fourth Row */}
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-                            {/* What-If Simulation */}
-                            <Card glass>
-                                <CardHeader>
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            <CardTitle className="flex items-center gap-2 text-lg">
-                                                <RefreshIcon size={18} className="text-primary" />
-                                                What-If Simulation
-                                            </CardTitle>
-                                            <CardDescription>Test different demand scenarios</CardDescription>
-                                        </div>
-                                        <Button variant="primary" size="sm" onClick={runSimulation} disabled={simulationLoading}>
-                                            <RefreshIcon size={14} className={simulationLoading ? 'animate-spin' : ''} />
-                                            {simulationLoading ? 'Running...' : 'Run Simulation'}
-                                        </Button>
-                                    </div>
-                                </CardHeader>
-                                <CardContent>
-                                    {/* Custom scenario input */}
-                                    <div className="mb-4">
-                                        {showCustomInput ? (
-                                            <div className="flex gap-2">
-                                                <input
-                                                    type="text"
-                                                    value={customScenario}
-                                                    onChange={(e) => setCustomScenario(e.target.value)}
-                                                    onKeyDown={(e) => e.key === 'Enter' && runCustomScenario()}
-                                                    placeholder="e.g. Major snowstorm next week..."
-                                                    className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                                                    autoFocus
-                                                />
-                                                <Button variant="primary" size="sm" onClick={runCustomScenario} disabled={simulationLoading}>Analyze</Button>
-                                                <Button variant="ghost" size="sm" onClick={() => { setShowCustomInput(false); setCustomScenario(''); }}>Cancel</Button>
-                                            </div>
-                                        ) : (
-                                            <div className="p-3 bg-info/10 border border-info/30 rounded-lg flex items-center justify-between">
-                                                <p className="text-sm text-info flex items-center gap-2">
-                                                    <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                                                    </svg>
-                                                    Use the chat assistant or run a custom AI scenario
-                                                </p>
-                                                <Button variant="ghost" size="sm" onClick={() => setShowCustomInput(true)}>Custom</Button>
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    {/* Results */}
-                                    {simulationResults.length === 0 ? (
-                                        <div className="text-center py-8 text-muted">
-                                            <RefreshIcon size={32} className="mx-auto mb-2 opacity-30" />
-                                            <p className="text-sm">Click <span className="text-foreground font-medium">Run Simulation</span> to load live scenarios from the database</p>
-                                        </div>
-                                    ) : (
-                                        <div className="space-y-3">
-                                            {simulationResults.map((sim: any, idx: number) => (
-                                                <div key={idx} className={`p-4 rounded-lg border ${sim.ai_reasoning ? 'bg-primary/5 border-primary/30' : 'bg-white/5 border-white/5'}`}>
-                                                    <div className="flex items-start justify-between mb-2">
-                                                        <div className="flex-1">
-                                                            <div className="flex items-center gap-2">
-                                                                <div className="font-medium text-sm">{sim.scenario}</div>
-                                                                {sim.ai_reasoning && (
-                                                                    <span className="px-2 py-0.5 bg-primary/20 text-primary text-xs rounded-full">AI</span>
-                                                                )}
-                                                            </div>
-                                                            {sim.ai_reasoning && (
-                                                                <div className="text-xs text-muted mt-1 italic">{sim.ai_reasoning}</div>
-                                                            )}
-                                                            <div className="text-xs text-muted mt-1">Confidence: {sim.confidence}%</div>
-                                                        </div>
-                                                        <div className="text-right ml-4">
-                                                            <div className="font-bold text-lg">{sim.demand.toLocaleString()}</div>
-                                                            <div className="mt-1">{getRiskBadge(sim.risk)}</div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                </CardContent>
-                            </Card>
-
-                            {/* GNN Insights Preview */}
-                            <Card glass>
-                                <CardHeader>
-                                    <CardTitle className="flex items-center gap-2 text-lg">
-                                        <DatabaseIcon size={18} className="text-info" />
-                                        GNN Insights Sample
-                                    </CardTitle>
-                                    <CardDescription>Product relationship preview</CardDescription>
-                                </CardHeader>
-                                <CardContent>
-                                    <div className="flex items-center justify-center py-12">
-                                        <div className="text-center">
-                                            <DatabaseIcon size={48} className="text-muted mx-auto mb-4 opacity-30" />
-                                            <p className="text-muted text-lg font-medium">To be updated</p>
-                                            <p className="text-muted/60 text-sm mt-2">GNN insights preview coming soon</p>
-                                        </div>
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        </div>
-
-                        {/* GNN Insights */}
-                        <Card glass>
-                            <CardHeader>
-                                <div className="flex items-center justify-between">
-                                    <div>
-                                        <CardTitle className="flex items-center gap-2 text-lg">
-                                            <DatabaseIcon size={18} className="text-primary" />
-                                            GNN Product Influence Graph
-                                        </CardTitle>
-                                        <CardDescription>Understand product relationships and cross-influences</CardDescription>
-                                    </div>
-                                </div>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="flex items-center justify-center py-16">
-                                    <div className="text-center">
-                                        <DatabaseIcon size={64} className="text-muted mx-auto mb-4 opacity-30" />
-                                        <p className="text-muted text-xl font-medium">To be updated</p>
-                                        <p className="text-muted/60 text-sm mt-2">GNN product influence graph coming soon</p>
-                                    </div>
-                                </div>
-                            </CardContent>
-                        </Card>
                     </>
                 )}
 
