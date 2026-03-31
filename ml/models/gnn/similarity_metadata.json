@@ -1,0 +1,9 @@
+{
+  "method": "ollama_llm",
+  "products": 240,
+  "edges": 9910,
+  "score_range": [
+    0.4,
+    1.0
+  ]
+}
